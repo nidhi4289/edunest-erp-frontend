@@ -13,6 +13,7 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [tenantId, setTenantId] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -23,7 +24,7 @@ export default function Login() {
       const response = await api.post("/auth/dev-login", {
         email,
         password,
-        tenantId: "demo"
+        tenantId
       });
       
       const { token } = response.data;
@@ -33,7 +34,7 @@ export default function Login() {
       }
       
       login(token);
-      navigate("/students");
+      navigate("/dashboard");
     } catch (err: any) {
       console.error("Login error:", err);
       setError(err.response?.data?.message || "Login failed. Please try again.");
@@ -72,6 +73,18 @@ export default function Login() {
                 placeholder="Enter your password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                required
+                disabled={loading}
+              />
+            </div>
+              <div className="space-y-2">
+              <label htmlFor="tenantId" className="text-sm font-medium">Tenant ID</label>
+              <Input
+                id="tenantId"
+                type="text"
+                placeholder="Enter tenant id"
+                value={tenantId}
+                onChange={(e) => setTenantId(e.target.value)}
                 required
                 disabled={loading}
               />

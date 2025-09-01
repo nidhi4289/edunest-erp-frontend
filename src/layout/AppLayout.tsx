@@ -1,66 +1,15 @@
-// src/layout/AppLayout.tsx
-import React from "react";
-import { Outlet, NavLink } from "react-router-dom";
-import {
-  Home, Users, GraduationCap, BookOpen, CalendarCheck2,
-  FileText, MessageSquare, Settings as SettingsIcon,
-  ChevronDown, LogOut, Moon, Sun, Shield, Database, Menu
+import { useState } from "react";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { 
+  Home, Users, GraduationCap, MessageSquare, Settings as SettingsIcon, 
+  Shield, UserPlus, Edit, DollarSign, FileSpreadsheet,
+  ChevronDown, ChevronRight, Menu, X, Clock, UserCheck, 
+  BookOpen, ClipboardList
 } from "lucide-react";
-
-// shadcn/ui
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { Switch } from "@/components/ui/switch";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { useBrand } from "@/theme/BrandProvider";
+import { useAuth } from "@/context/AuthContext";
 
-
-// ---------- helpers (color utilities) ----------
-function hexToRgb(hex: string) {
-  const h = hex.replace("#", "");
-  const full = h.length === 3 ? h.split("").map((x) => x + x).join("") : h;
-  const bigint = parseInt(full, 16);
-  return { r: (bigint >> 16) & 255, g: (bigint >> 8) & 255, b: bigint & 255 };
-}
-function alpha(hex: string, a: number) {
-  const { r, g, b } = hexToRgb(hex);
-  return `rgba(${r}, ${g}, ${b}, ${a})`;
-}
-function brandGrad(brand: string, a = 0.14) {
-  return `linear-gradient(135deg, ${alpha(brand, a)}, transparent 60%)`;
-}
-
-// ---------- demo schools (tenant switcher) ----------
-type School = { id: string; name: string; brand: string };
-const DEMO_SCHOOLS: School[] = [
-  { id: "demo", name: "Green Valley High", brand: "#2563eb" }, // blue-600
-  { id: "oak", name: "Oakridge Public School", brand: "#16a34a" }, // green-600
-  { id: "sun", name: "Sunrise International", brand: "#f59e0b" }, // amber-500
-];
-
-// ---------- small pieces ----------
-function BrandButton(
-  { children, brand, className = "", ...props }:
-  React.ComponentProps<typeof Button> & { brand: string }
-) {
-  return (
-    <Button
-      className={`border-0 text-white shadow-sm hover:opacity-95 ${className}`}
-      style={{ backgroundColor: brand }}
-      {...props}
-    >
-      {children}
-    </Button>
-  );
-}
-
-// ---------- Sidebar ----------
-// Fix the Sidebar component - the issue is around line 124
 function Sidebar({
   brand,
   open,
@@ -70,192 +19,284 @@ function Sidebar({
   open: boolean;
   onClose: () => void;
 }) {
-  const items = [
-    { to: "/", label: "Dashboard", icon: Home, end: true },
-    { to: "/students", label: "Students", icon: Users, end: false },
-    { to: "/staff", label: "Staff", icon: GraduationCap, end: false },
-    { to: "/classes", label: "Classes", icon: BookOpen, end: false },
-    { to: "/attendance", label: "Attendance", icon: CalendarCheck2, end: false },
-    { to: "/assessments", label: "Assessments", icon: FileText, end: false },
+  const [adminExpanded, setAdminExpanded] = useState(false);
+  const [staffExpanded, setStaffExpanded] = useState(false);
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+
+  // Hardcode role as admin for testing
+  type UserRole = "admin" | "staff" | "student";
+  const userRole: UserRole = "admin"; // Change this to 'staff' or 'student' to test other roles
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
+  };
+
+  // Base navigation items for all users
+  const baseItems = [
     { to: "/comms", label: "Comms", icon: MessageSquare, end: false },
-    { to: "/settings", label: "Settings", icon: SettingsIcon, end: false },
   ] as const;
+  
+  // Items visible to all roles
+  const studentItems = [
+    { to: "/students", label: "Students", icon: Users, end: false },
+  ] as const;
+
+  // Staff sub-items (only for staff and admin)
+  const staffItems = [
+    { to: "/staff/upload-attendance", label: "Upload Attendance", icon: Clock },
+    { to: "/staff/student-details", label: "Student Details", icon: UserCheck },
+    { to: "/staff/assign-homework", label: "Assign Homework", icon: ClipboardList },
+    { to: "/staff/create-lesson-plan", label: "Create Lesson Plan", icon: BookOpen },
+  ] as const;
+
+  // Admin sub-items (only for admin)
+ const adminItems = [
+  { to: "/dashboard", label: "Dashboard", icon: Home, end: true },
+  { to: "/admin/bulk-add-students", label: "Add Bulk Students", icon: UserPlus },
+  { to: "/admin/update-student", label: "Update Student", icon: Edit },
+  { to: "/admin/upload-fees", label: "Upload Fees", icon: DollarSign },
+  { to: "/admin/comms", label: "Communications", icon: MessageSquare },
+] as const;
+
+  // Determine what to show based on role
+  const showAdminItems: boolean = userRole === "admin";
+  const showStaffItems: boolean = userRole === "admin" || userRole === "staff";
 
   return (
     <>
-      {/* overlay for mobile */}
-      <div
-        className={`fixed inset-0 bg-black/30 lg:hidden transition-opacity ${open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
-        onClick={onClose}
-      />
-      <aside
-        className={`fixed lg:static z-40 h-full w-64 border-r bg-white/80 backdrop-blur
-                    dark:bg-neutral-900/60 dark:border-neutral-800 transition-transform
-                    ${open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
+      {/* Backdrop for mobile */}
+      {open && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden" 
+          onClick={onClose}
+        />
+      )}
+      
+      {/* Sidebar */}
+      <aside 
+        className={`fixed top-0 left-0 z-50 h-full w-64 bg-white border-r border-neutral-200 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
+          open ? 'translate-x-0' : '-translate-x-full'
+        }`}
       >
-        <div className="px-4 py-5 flex items-center gap-2">
-          <Shield style={{ color: brand }} className="h-6 w-6" />
-          <span className="font-semibold text-lg" style={{ color: brand }}>EduNest ERP</span>
-        </div>
-        <Separator />
-        <nav className="px-2 py-4 space-y-1">
-          {items.map((it) => (
-            <NavLink
-              key={it.to}
-              to={it.to}
-              end={it.end as boolean | undefined}
-              className={({ isActive }) =>
-                `w-full flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition
-                 hover:bg-neutral-100 dark:hover:bg-neutral-800`
-                + (isActive ? " font-medium" : "")
-              }
-              style={({ isActive }) =>
-                isActive ? { background: alpha(brand, 0.10), borderLeft: `3px solid ${brand}` } : undefined
-              }
+        {/* Header */}
+        <div className="p-4 border-b border-neutral-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div 
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold"
+                style={{ backgroundColor: brand }}
+              >
+                E
+              </div>
+              <div>
+                <span className="font-semibold text-lg">EduNest ERP</span>
+                <p className="text-xs text-gray-500 capitalize">{userRole} Dashboard</p>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={onClose}
+              className="lg:hidden"
             >
-              <it.icon className="h-4 w-4" />
-              {it.label}
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+          {/* Base Navigation Items (Comms) */}
+          {baseItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              onClick={onClose}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  isActive
+                    ? "bg-blue-50 text-blue-700 border border-blue-200"
+                    : "text-neutral-600 hover:bg-neutral-100"
+                }`
+              }
+            >
+              <item.icon className="h-4 w-4" />
+              {item.label}
             </NavLink>
           ))}
+
+          {/* Student Items (Students page - visible to all) */}
+          { studentItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              onClick={onClose}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  isActive
+                    ? "bg-blue-50 text-blue-700 border border-blue-200"
+                    : "text-neutral-600 hover:bg-neutral-100"
+                }`
+              }
+            >
+              <item.icon className="h-4 w-4" />
+              {item.label}
+            </NavLink>
+          ))}
+
+          {/* Staff Section (visible to staff and admin) */}
+          {showStaffItems && (
+            <div className="space-y-1">
+              <button
+                onClick={() => setStaffExpanded(!staffExpanded)}
+                className="flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm font-medium text-neutral-600 hover:bg-neutral-100 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <GraduationCap className="h-4 w-4" />
+                  Staff
+                </div>
+                {staffExpanded ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </button>
+
+              {/* Staff Sub-items */}
+              {staffExpanded && (
+                <div className="ml-4 space-y-1 border-l-2 border-neutral-100 pl-3">
+                  {staffItems.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      onClick={onClose}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                          isActive
+                            ? "bg-green-50 text-green-700 border border-green-200"
+                            : "text-neutral-500 hover:bg-neutral-50"
+                        }`
+                      }
+                    >
+                      <item.icon className="h-3 w-3" />
+                      {item.label}
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Admin Section (visible only to admin) */}
+          {showAdminItems && (
+            <div className="space-y-1">
+              <button
+                onClick={() => setAdminExpanded(!adminExpanded)}
+                className="flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm font-medium text-neutral-600 hover:bg-neutral-100 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <Shield className="h-4 w-4" />
+                  Admin
+                </div>
+                {adminExpanded ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </button>
+
+              {/* Admin Sub-items */}
+              {adminExpanded && (
+                <div className="ml-4 space-y-1 border-l-2 border-neutral-100 pl-3">
+                  {adminItems.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      onClick={onClose}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                          isActive
+                            ? "bg-blue-50 text-blue-700 border border-blue-200"
+                            : "text-neutral-500 hover:bg-neutral-50"
+                        }`
+                      }
+                    >
+                      <item.icon className="h-3 w-3" />
+                      {item.label}
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Settings (visible to all) */}
+          <NavLink
+            to="/settings"
+            onClick={onClose}
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                isActive
+                  ? "bg-blue-50 text-blue-700 border border-blue-200"
+                  : "text-neutral-600 hover:bg-neutral-100"
+              }`
+            }
+          >
+            <SettingsIcon className="h-4 w-4" />
+            Settings
+          </NavLink>
         </nav>
 
-        <div className="absolute bottom-0 left-0 right-0 p-3">
-          <Card className="border-none bg-gradient-to-br from-neutral-50 to-neutral-100 dark:from-neutral-900 dark:to-neutral-800">
-            <CardHeader className="p-3 pb-1">
-              <CardTitle className="text-sm">Free Tier</CardTitle>
-              <CardDescription className="text-xs">Designed to run lean on AWS.</CardDescription>
-            </CardHeader>
-            <CardContent className="p-3 pt-1">
-              <div className="flex items-center gap-2 text-xs text-neutral-500">
-                <Database className="h-3.5 w-3.5" /> RDS schema-per-tenant
-              </div>
-            </CardContent>
-          </Card>
+        {/* Footer */}
+        <div className="p-4 border-t border-neutral-200">
+          <div className="mb-2 text-xs text-gray-500">
+            Testing as: <span className="font-medium capitalize text-blue-600">{userRole}</span>
+          </div>
+          <Button
+            variant="outline"
+            className="w-full justify-start text-red-600 border-red-200 hover:bg-red-50"
+            onClick={handleLogout}
+          >
+            Logout
+          </Button>
         </div>
       </aside>
     </>
   );
 }
 
-// ---------- Topbar ----------
-function Topbar({
-  school,
-  setSchool,
-  dark,
-  setDark,
-  onMenu,
-}: {
-  school: School;
-  setSchool: (id: string) => void;
-  dark: boolean;
-  setDark: (b: boolean) => void;
-  onMenu: () => void;
-}) {
-  return (
-    <div
-      className="h-16 border-b sticky top-0 z-30 flex items-center px-3 md:px-4 gap-3 dark:border-neutral-800"
-      style={{ backgroundImage: brandGrad(school.brand, 0.14), backdropFilter: "blur(8px)" }}
-    >
-      <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenu} aria-label="Open menu">
-        <Menu className="h-5 w-5" />
-      </Button>
-
-      {/* School switcher */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" className="gap-2 bg-white/70 dark:bg-neutral-900/60">
-            <div className="h-3 w-3 rounded-full" style={{ backgroundColor: school.brand }} />
-            <span className="truncate max-w-[180px]">{school.name}</span>
-            <ChevronDown className="h-4 w-4 opacity-60" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-64">
-          <DropdownMenuLabel>Switch school</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {DEMO_SCHOOLS.map((s) => (
-            <DropdownMenuItem key={s.id} onClick={() => setSchool(s.id)} className="gap-2">
-              <div className="h-3 w-3 rounded-full" style={{ backgroundColor: s.brand }} />
-              {s.name}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <Separator orientation="vertical" className="h-6 hidden md:block" />
-
-      <div className="flex-1 flex items-center gap-2">
-        <div className="relative w-full max-w-md">
-          <Input placeholder="Search students, staff, classes…" className="pl-8" />
-          {/* decorative icon via background omitted; keep input simple */}
-        </div>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <Switch checked={dark} onCheckedChange={setDark} aria-label="Toggle dark mode" />
-        {dark ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="gap-2">
-              <Avatar className="h-7 w-7 ring-2" style={{ boxShadow: `0 0 0 2px ${alpha(school.brand, 0.25)}` }}>
-                <AvatarFallback>AS</AvatarFallback>
-              </Avatar>
-              <ChevronDown className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>
-              Signed in as
-              <div className="text-xs text-neutral-500">admin@schoolcrm</div>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="gap-2">
-              <SettingsIcon className="h-4 w-4" /> Profile & Settings
-            </DropdownMenuItem>
-            <DropdownMenuItem className="gap-2 text-red-600">
-              <LogOut className="h-4 w-4" /> Logout
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </div>
-  );
-}
-
-// ---------- AppLayout ----------
 export default function AppLayout() {
-  const [dark, setDark] = React.useState(false);
-  const [schoolId, setSchoolId] = React.useState(DEMO_SCHOOLS[0].id);
-  const school = React.useMemo(() => DEMO_SCHOOLS.find((s) => s.id === schoolId)!, [schoolId]);
-  const [mobileOpen, setMobileOpen] = React.useState(false);
-
-  // brand → CSS var for easy theming
-  React.useEffect(() => {
-    document.documentElement.style.setProperty("--brand", school.brand);
-  }, [school.brand]);
-
-  // dark mode toggle (tailwind v4 prefers .dark on root)
-  React.useEffect(() => {
-    document.documentElement.classList.toggle("dark", dark);
-  }, [dark]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { brand } = useBrand();
 
   return (
-    <div className="min-h-screen bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
-      <div className="grid grid-cols-1 lg:grid-cols-[16rem_1fr] h-screen">
-        <Sidebar brand={school.brand} open={mobileOpen} onClose={() => setMobileOpen(false)} />
-        <div className="flex flex-col h-full overflow-hidden">
-          <Topbar
-            school={school}
-            setSchool={setSchoolId}
-            dark={dark}
-            setDark={setDark}
-            onMenu={() => setMobileOpen(true)}
-          />
-          <main className="flex-1 overflow-y-auto p-0">
-            <Outlet />
-          </main>
-        </div>
+    <div className="min-h-screen bg-neutral-50">
+      <Sidebar 
+        brand={brand} 
+        open={sidebarOpen} 
+        onClose={() => setSidebarOpen(false)} 
+      />
+      
+      <div className="lg:ml-64">
+        {/* Top bar for mobile */}
+        <header className="lg:hidden bg-white border-b border-neutral-200 p-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+        </header>
+
+        {/* Main content */}
+        <main className="min-h-screen">
+          <Outlet />
+        </main>
       </div>
     </div>
   );

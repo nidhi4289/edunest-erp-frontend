@@ -5,6 +5,7 @@ import Students from "./pages/Students";
 import { useAuth, AuthProvider } from "./context/AuthContext";
 import { ReactNode } from "react";
 
+
 function Protected({ children }: { children: ReactNode }) {
   const { token } = useAuth();
   if (!token) return <Navigate to="/login" replace />;
