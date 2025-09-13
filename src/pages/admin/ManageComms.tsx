@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,7 +8,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { MessageSquare, Send, Edit, Trash2, Eye, EyeOff, AlertCircle, CheckCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-// import { api } from "@/services/api"; // Commented out since backend not present
 
 interface Communication {
   id: string;
@@ -17,6 +17,7 @@ interface Communication {
   isActive: boolean;
   createdAt: string;
   createdBy: string;
+  modifiedBy?: string;
 }
 
 interface PostResult {
@@ -24,7 +25,10 @@ interface PostResult {
   message: string;
 }
 
+const API_BASE = "http://localhost:5199/api/Communication";
+
 export default function ManageComms() {
+  const { userGuid, token } = useAuth();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [type, setType] = useState<'notice' | 'announcement'>('notice');
@@ -33,52 +37,29 @@ export default function ManageComms() {
   const [postResult, setPostResult] = useState<PostResult | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  // Mock data for testing
-  const mockComms: Communication[] = [
-    {
-      id: "1",
-      title: "School Reopening Notice",
-      content: "Dear Students and Parents, We are pleased to announce that school will reopen on January 20th, 2024. Please ensure all students arrive on time.",
-      type: "notice",
-      isActive: true,
-      createdAt: "2024-01-15T10:30:00Z",
-      createdBy: "Admin"
-    },
-    {
-      id: "2",
-      title: "Annual Sports Day",
-      content: "We are excited to announce our Annual Sports Day scheduled for February 15th, 2024. All students are encouraged to participate.",
-      type: "announcement",
-      isActive: true,
-      createdAt: "2024-01-14T14:20:00Z",
-      createdBy: "Admin"
-    },
-    {
-      id: "3",
-      title: "Fee Payment Reminder",
-      content: "This is a reminder that the monthly fees for January 2024 are due by January 25th. Please make payment to avoid late fees.",
-      type: "notice",
-      isActive: false,
-      createdAt: "2024-01-10T09:15:00Z",
-      createdBy: "Admin"
-    }
-  ];
-
   useEffect(() => {
     loadCommunications();
+    // eslint-disable-next-line
   }, []);
 
   const loadCommunications = async () => {
     try {
-      /* 
-      // Backend API call - Commented out until backend is ready
-      const response = await api.get('/admin/communications');
-      setCommunications(response.data.communications);
-      */
-
-      // Mock data for now
-      setCommunications(mockComms);
+      const res = await fetch(API_BASE, {
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      });
+      if (!res.ok) throw new Error("Failed to fetch communications");
+      const data = await res.json();
+      setCommunications(
+        data.map((item: any) => ({
+          ...item,
+          isActive: item.status?.toLowerCase() === "active"
+        }))
+      );
     } catch (error) {
+      setCommunications([]);
       console.error('Error loading communications:', error);
     }
   };
@@ -96,55 +77,54 @@ export default function ManageComms() {
     setPostResult(null);
 
     try {
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      const newComm: Communication = {
-        id: editingId || Date.now().toString(),
+      const commDto = {
         title: title.trim(),
         content: content.trim(),
         type,
         isActive: true,
-        createdAt: new Date().toISOString(),
-        createdBy: "Admin"
+        createdBy: userGuid || "",
+        modifiedBy: userGuid || ""
       };
 
-      /* 
-      // Backend API call - Commented out until backend is ready
+      let response, result;
       if (editingId) {
-        const response = await api.put(`/admin/communications/${editingId}`, newComm);
-      } else {
-        const response = await api.post('/admin/communications', newComm);
-      }
-      */
-
-      // Mock success response
-      if (editingId) {
-        setCommunications(prev => 
-          prev.map(comm => comm.id === editingId ? newComm : comm)
-        );
-        setPostResult({
-          success: true,
-          message: "Communication updated successfully"
+        response = await fetch(`${API_BASE}/${editingId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify(commDto)
         });
+        result = await response.json();
       } else {
-        setCommunications(prev => [newComm, ...prev]);
-        setPostResult({
-          success: true,
-          message: "Communication posted successfully"
+        response = await fetch(API_BASE, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify(commDto)
         });
+        result = await response.json();
       }
 
-      // Clear form
+      if (!response.ok) throw new Error(result.message || "Failed to save communication");
+
+      setPostResult({
+        success: true,
+        message: editingId ? "Communication updated successfully" : "Communication posted successfully"
+      });
+
       setTitle("");
       setContent("");
       setType('notice');
       setEditingId(null);
-
+      loadCommunications();
     } catch (error: any) {
       setPostResult({
         success: false,
-        message: "Failed to post communication. Please try again."
+        message: error.message || "Failed to post communication. Please try again."
       });
     } finally {
       setPosting(false);
@@ -161,16 +141,19 @@ export default function ManageComms() {
 
   const handleToggleStatus = async (id: string) => {
     try {
-      /* 
-      // Backend API call - Commented out until backend is ready
-      await api.patch(`/admin/communications/${id}/toggle-status`);
-      */
-
-      setCommunications(prev =>
-        prev.map(comm =>
-          comm.id === id ? { ...comm, isActive: !comm.isActive } : comm
-        )
-      );
+      const comm = communications.find(c => c.id === id);
+      if (!comm) return;
+      const updatedComm = { ...comm, isActive: !comm.isActive, modifiedBy: userGuid || "" };
+      const response = await fetch(`${API_BASE}/${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(updatedComm)
+      });
+      if (!response.ok) throw new Error("Failed to update status");
+      loadCommunications();
     } catch (error) {
       console.error('Error toggling status:', error);
     }
@@ -178,14 +161,16 @@ export default function ManageComms() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this communication?")) return;
-
     try {
-      /* 
-      // Backend API call - Commented out until backend is ready
-      await api.delete(`/admin/communications/${id}`);
-      */
-
-      setCommunications(prev => prev.filter(comm => comm.id !== id));
+      const response = await fetch(`${API_BASE}/${id}`, { 
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      });
+      if (!response.ok) throw new Error("Failed to delete communication");
+      loadCommunications();
     } catch (error) {
       console.error('Error deleting communication:', error);
     }

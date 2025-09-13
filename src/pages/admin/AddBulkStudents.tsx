@@ -6,19 +6,30 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { UserPlus, Download, Upload, FileSpreadsheet, AlertCircle, CheckCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import * as XLSX from 'xlsx';
-// import { api } from "@/services/api"; // Commented out since backend not present
+import { api } from "@/services/api";
+import { useAuth } from "@/context/AuthContext";
 
 interface StudentData {
   firstName: string;
   lastName: string;
   dateOfBirth: string;
-  gender: string;
-  grade: string;
-  admissionDate: string;
   fatherName: string;
+  fatherEmail: string;
   motherName: string;
-  address: string;
-  uniqueId: string;
+  motherEmail: string;
+  grade: string;
+  section: string;
+  status: string;
+  admissionNumber: string;
+  phoneNumber: string;
+  secondaryPhoneNumber: string;
+  email: string;
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  country: string;
 }
 
 interface UploadResult {
@@ -35,32 +46,53 @@ export default function AddBulkStudents() {
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [previewData, setPreviewData] = useState<StudentData[]>([]);
   const [showPreview, setShowPreview] = useState(false);
+  const { token } = useAuth();
 
   // Sample data for the Excel template
   const sampleData: StudentData[] = [
     {
-      firstName: "John",
-      lastName: "Doe",
-      dateOfBirth: "2010-05-15",
-      gender: "Male",
-      grade: "Grade 8",
-      admissionDate: "2024-01-15",
-      fatherName: "Robert Doe",
-      motherName: "Jane Doe",
-      address: "123 Main St, City, State, 12345",
-      uniqueId: "STU001"
+      firstName: "Duggu",
+      lastName: "Sharma",
+      dateOfBirth: "2015-08-31",
+      fatherName: "Pratap Sharma",
+      fatherEmail: "abc@gh.lkj",
+      motherName: "Meenu Sharma",
+      motherEmail: "avb@gh.lkj",
+      grade: "8",
+      section: "Lotus",
+      status: "Active",
+      admissionNumber: "1123456780",
+      phoneNumber: "8826987650",
+      secondaryPhoneNumber: "",
+      email: "abc@gh.lkj",
+      addressLine1: "MJ 44",
+      addressLine2: "Jawahar",
+      city: "Rtalam",
+      state: "MP",
+      zipCode: "457001",
+      country: "India"
     },
     {
-      firstName: "Sarah",
-      lastName: "Smith",
-      dateOfBirth: "2009-08-22",
-      gender: "Female",
-      grade: "Grade 9",
-      admissionDate: "2024-01-15",
-      fatherName: "Michael Smith",
-      motherName: "Lisa Smith",
-      address: "456 Oak Ave, City, State, 12345",
-      uniqueId: "STU002"
+      firstName: "Rahul",
+      lastName: "Patel",
+      dateOfBirth: "2014-12-15",
+      fatherName: "Suresh Patel",
+      fatherEmail: "suresh@example.com",
+      motherName: "Priya Patel",
+      motherEmail: "priya@example.com",
+      grade: "9",
+      section: "Rose",
+      status: "Active",
+      admissionNumber: "1123456781",
+      phoneNumber: "9876543210",
+      secondaryPhoneNumber: "9876543211",
+      email: "rahul@example.com",
+      addressLine1: "45 Park Street",
+      addressLine2: "Sector 7",
+      city: "Mumbai",
+      state: "Maharashtra",
+      zipCode: "400001",
+      country: "India"
     }
   ];
 
@@ -72,29 +104,49 @@ export default function AddBulkStudents() {
     const worksheetData = [
       // Header row
       [
-        "Student First Name",
-        "Student Last Name", 
-        "Date of Birth (YYYY-MM-DD)",
-        "Gender",
-        "Grade",
-        "Admission Date (YYYY-MM-DD)",
-        "Father Name",
-        "Mother Name",
-        "Address",
-        "Unique ID"
+        "firstName",
+        "lastName",
+        "dateOfBirth",
+        "fatherName",
+        "fatherEmail",
+        "motherName",
+        "motherEmail",
+        "grade",
+        "section",
+        "status",
+        "admissionNumber",
+        "phoneNumber",
+        "secondaryPhoneNumber",
+        "email",
+        "addressLine1",
+        "addressLine2",
+        "city",
+        "state",
+        "zipCode",
+        "country"
       ],
       // Sample data rows
       ...sampleData.map(student => [
         student.firstName,
         student.lastName,
         student.dateOfBirth,
-        student.gender,
-        student.grade,
-        student.admissionDate,
         student.fatherName,
+        student.fatherEmail,
         student.motherName,
-        student.address,
-        student.uniqueId
+        student.motherEmail,
+        student.grade,
+        student.section,
+        student.status,
+        student.admissionNumber,
+        student.phoneNumber,
+        student.secondaryPhoneNumber,
+        student.email,
+        student.addressLine1,
+        student.addressLine2,
+        student.city,
+        student.state,
+        student.zipCode,
+        student.country
       ])
     ];
 
@@ -104,14 +156,24 @@ export default function AddBulkStudents() {
     const columnWidths = [
       { wch: 15 }, // firstName
       { wch: 15 }, // lastName
-      { wch: 20 }, // dateOfBirth
-      { wch: 10 }, // gender
-      { wch: 12 }, // grade
-      { wch: 20 }, // admissionDate
+      { wch: 12 }, // dateOfBirth
       { wch: 15 }, // fatherName
+      { wch: 20 }, // fatherEmail
       { wch: 15 }, // motherName
-      { wch: 30 }, // address
-      { wch: 12 }  // uniqueId
+      { wch: 20 }, // motherEmail
+      { wch: 8 },  // grade
+      { wch: 10 }, // section
+      { wch: 10 }, // status
+      { wch: 15 }, // admissionNumber
+      { wch: 12 }, // phoneNumber
+      { wch: 15 }, // secondaryPhoneNumber
+      { wch: 20 }, // email
+      { wch: 15 }, // addressLine1
+      { wch: 15 }, // addressLine2
+      { wch: 12 }, // city
+      { wch: 10 }, // state
+      { wch: 8 },  // zipCode
+      { wch: 10 }  // country
     ];
     worksheet['!cols'] = columnWidths;
 
@@ -149,13 +211,23 @@ export default function AddBulkStudents() {
             firstName: row[0] || '',
             lastName: row[1] || '',
             dateOfBirth: row[2] || '',
-            gender: row[3] || '',
-            grade: row[4] || '',
-            admissionDate: row[5] || '',
-            fatherName: row[6] || '',
-            motherName: row[7] || '',
-            address: row[8] || '',
-            uniqueId: row[9] || ''
+            fatherName: row[3] || '',
+            fatherEmail: row[4] || '',
+            motherName: row[5] || '',
+            motherEmail: row[6] || '',
+            grade: row[7] || '',
+            section: row[8] || '',
+            status: row[9] || 'Active',
+            admissionNumber: row[10] || '',
+            phoneNumber: row[11] || '',
+            secondaryPhoneNumber: row[12] || '',
+            email: row[13] || '',
+            addressLine1: row[14] || '',
+            addressLine2: row[15] || '',
+            city: row[16] || '',
+            state: row[17] || '',
+            zipCode: row[18] || '',
+            country: row[19] || 'India'
           }));
         
         setPreviewData(students);
@@ -183,14 +255,14 @@ export default function AddBulkStudents() {
         if (!student.firstName || !student.lastName) {
           errors.push(`Row ${index + 2}: First name and last name are required`);
         }
-        if (!student.uniqueId) {
-          errors.push(`Row ${index + 2}: Unique ID is required`);
+        if (!student.admissionNumber) {
+          errors.push(`Row ${index + 2}: Admission number is required`);
+        }
+        if (!student.grade) {
+          errors.push(`Row ${index + 2}: Grade is required`);
         }
         if (student.dateOfBirth && !isValidDate(student.dateOfBirth)) {
-          errors.push(`Row ${index + 2}: Invalid date of birth format`);
-        }
-        if (student.admissionDate && !isValidDate(student.admissionDate)) {
-          errors.push(`Row ${index + 2}: Invalid admission date format`);
+          errors.push(`Row ${index + 2}: Invalid date of birth format (use YYYY-MM-DD)`);
         }
       });
 
@@ -203,13 +275,37 @@ export default function AddBulkStudents() {
         return;
       }
 
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Prepare data for backend - add eduNestId and format dates
+      const studentsForBackend = previewData.map(student => ({
+        eduNestId: "", // Backend will generate this
+        firstName: student.firstName,
+        lastName: student.lastName,
+        dateOfBirth: student.dateOfBirth ? new Date(student.dateOfBirth).toISOString() : null,
+        fatherName: student.fatherName,
+        fatherEmail: student.fatherEmail,
+        motherName: student.motherName,
+        motherEmail: student.motherEmail,
+        grade: typeof student.grade === 'number' ? String(student.grade) : (student.grade ?? '').toString(),
+        section: student.section,
+        status: student.status,
+        admissionNumber: student.admissionNumber,
+        phoneNumber: student.phoneNumber,
+        secondaryPhoneNumber: student.secondaryPhoneNumber,
+        email: student.email,
+        addressLine1: student.addressLine1,
+        addressLine2: student.addressLine2,
+        city: student.city,
+        state: student.state,
+        zipCode: student.zipCode,
+        country: student.country
+      }));
 
-      /* 
-      // Backend API call - Commented out until backend is ready
-      const response = await api.post('/admin/bulk-add-students', {
-        students: previewData
+      // Backend API call
+      const response = await api.post('http://localhost:5199/Students/bulk-add', studentsForBackend, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
       });
       
       // Handle successful response
@@ -218,15 +314,6 @@ export default function AddBulkStudents() {
         message: response.data.message || `Successfully uploaded ${previewData.length} students`,
         successCount: response.data.successCount || previewData.length,
         errorCount: response.data.errorCount || 0
-      });
-      */
-
-      // Hardcoded success response for now
-      setUploadResult({
-        success: true,
-        message: `Successfully uploaded ${previewData.length} students`,
-        successCount: previewData.length,
-        errorCount: 0
       });
 
       // Clear file and preview on success
@@ -241,22 +328,12 @@ export default function AddBulkStudents() {
       }
 
     } catch (error: any) {
-      /*
-      // Backend error handling - Commented out until backend is ready
+      console.error('Upload error:', error);
       setUploadResult({
         success: false,
         message: error.response?.data?.message || 'Upload failed. Please try again.',
         errors: error.response?.data?.errors || []
       });
-      */
-      
-      // Hardcoded error response for testing (uncomment to test error state)
-      // setUploadResult({
-      //   success: false,
-      //   message: 'Upload failed. Please try again.'
-      // });
-      
-      console.error('Upload error:', error);
     } finally {
       setUploading(false);
     }
@@ -297,8 +374,9 @@ export default function AddBulkStudents() {
             <h3 className="font-semibold text-blue-900 mb-2">How to upload students:</h3>
             <ol className="list-decimal list-inside space-y-1 text-blue-800">
               <li>Download the Excel template below</li>
-              <li>Fill in the student information (remove sample data)</li>
+              <li>Fill in the student information (replace sample data with real data)</li>
               <li>Ensure all required fields are completed</li>
+              <li>Use proper date format (YYYY-MM-DD) for dateOfBirth</li>
               <li>Upload the completed Excel file</li>
               <li>Review the preview and confirm the upload</li>
             </ol>
@@ -313,7 +391,7 @@ export default function AddBulkStudents() {
               Download Excel Template
             </Button>
             <span className="text-sm text-gray-500">
-              Template includes sample data and proper formatting
+              Template includes all required columns with sample data
             </span>
           </div>
         </CardContent>
@@ -351,9 +429,10 @@ export default function AddBulkStudents() {
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>DOB</TableHead>
-                      <TableHead>Gender</TableHead>
                       <TableHead>Grade</TableHead>
-                      <TableHead>Unique ID</TableHead>
+                      <TableHead>Section</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Admission #</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -361,9 +440,10 @@ export default function AddBulkStudents() {
                       <TableRow key={index}>
                         <TableCell>{student.firstName} {student.lastName}</TableCell>
                         <TableCell>{student.dateOfBirth}</TableCell>
-                        <TableCell>{student.gender}</TableCell>
                         <TableCell>{student.grade}</TableCell>
-                        <TableCell>{student.uniqueId}</TableCell>
+                        <TableCell>{student.section}</TableCell>
+                        <TableCell>{student.status}</TableCell>
+                        <TableCell>{student.admissionNumber}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

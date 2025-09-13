@@ -4,7 +4,7 @@ import {
   Home, Users, GraduationCap, MessageSquare, Settings as SettingsIcon, 
   Shield, UserPlus, Edit, DollarSign, FileSpreadsheet,
   ChevronDown, ChevronRight, Menu, X, Clock, UserCheck, 
-  BookOpen, ClipboardList
+  BookOpen, ClipboardList, FileText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useBrand } from "@/theme/BrandProvider";
@@ -46,18 +46,20 @@ function Sidebar({
   // Staff sub-items (only for staff and admin)
   const staffItems = [
     { to: "/staff/upload-attendance", label: "Upload Attendance", icon: Clock },
+    { to: "/staff/upload-marks", label: "Upload Marks", icon: FileText },
     { to: "/staff/student-details", label: "Student Details", icon: UserCheck },
     { to: "/staff/assign-homework", label: "Assign Homework", icon: ClipboardList },
-    { to: "/staff/create-lesson-plan", label: "Create Lesson Plan", icon: BookOpen },
   ] as const;
 
   // Admin sub-items (only for admin)
  const adminItems = [
   { to: "/dashboard", label: "Dashboard", icon: Home, end: true },
+  { to: "/admin/add-student", label: "Add Student", icon: UserPlus },
   { to: "/admin/bulk-add-students", label: "Add Bulk Students", icon: UserPlus },
   { to: "/admin/update-student", label: "Update Student", icon: Edit },
   { to: "/admin/upload-fees", label: "Upload Fees", icon: DollarSign },
   { to: "/admin/comms", label: "Communications", icon: MessageSquare },
+  { to: "/admin/add-staff", label: "Add Staff", icon: UserPlus },
 ] as const;
 
   // Determine what to show based on role

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 export default function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
-  const [email, setEmail] = useState("");
+  const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -21,19 +21,24 @@ export default function Login() {
     setError("");
     
     try {
-      const response = await api.post("/auth/dev-login", {
-        email,
+      const response = await api.post("/Auth/login", {
+        userId,
         password,
         tenantId
       });
-      
-      const { token } = response.data;
-      
+
+      const { token, role, passwordResetRequired, userGuid } = response.data;
+
+      if (passwordResetRequired) {
+        navigate("/first-reset", { state: { userId, tenantId } });
+        return;
+      }
+
       if (!token) {
         throw new Error("No token received from server");
       }
-      
-      login(token);
+
+      login(token, role, userGuid); // Pass userGuid to context
       navigate("/dashboard");
     } catch (err: any) {
       console.error("Login error:", err);
@@ -53,13 +58,13 @@ export default function Login() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <label htmlFor="email" className="text-sm font-medium">Email</label>
+              <label htmlFor="userId" className="text-sm font-medium">User ID</label>
               <Input
-                id="email"
-                type="email"
-                placeholder="Enter your email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="userId"
+                type="text"
+                placeholder="Enter your user ID"
+                value={userId}
+                onChange={(e) => setUserId(e.target.value)}
                 required
                 disabled={loading}
               />
@@ -106,7 +111,7 @@ export default function Login() {
           </form>
           
           <div className="mt-4 text-xs text-neutral-500 text-center">
-            Demo credentials: any email/password will work
+            Enter your credentials
           </div>
         </CardContent>
       </Card>

@@ -4,6 +4,7 @@ import Dashboard from "./pages/Dashboard";
 import Students from "./pages/Students";
 import { useAuth, AuthProvider } from "./context/AuthContext";
 import { ReactNode } from "react";
+import FirstReset from "./pages/FirstReset";
 
 
 function Protected({ children }: { children: ReactNode }) {
@@ -18,6 +19,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/first-reset" element={<FirstReset />} />
           <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
           <Route path="/students" element={<Protected><Students /></Protected>} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

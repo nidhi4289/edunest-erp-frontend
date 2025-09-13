@@ -6,15 +6,20 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DollarSign, Download, Upload, FileSpreadsheet, AlertCircle, CheckCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import * as XLSX from 'xlsx';
-// import { api } from "@/services/api"; // Commented out since backend not present
+import { api } from "@/services/api";
+import { useAuth } from "@/context/AuthContext";
 
 interface FeesData {
   firstName: string;
   lastName: string;
-  uniqueId: string;
-  date: string;
-  amount: string;
-  discount: string;
+  fatherName: string;
+  dateOfBirth: string;
+  student_edunest_id: string;
+  fee_collected: string;
+  fee_waived: string;
+  waiver_reason: string;
+  grade: string;
+  section: string;
 }
 
 interface UploadResult {
@@ -26,6 +31,7 @@ interface UploadResult {
 }
 
 export default function UploadFees() {
+  const { token } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
@@ -35,28 +41,40 @@ export default function UploadFees() {
   // Sample data for the Excel template
   const sampleData: FeesData[] = [
     {
-      firstName: "John",
-      lastName: "Doe",
-      uniqueId: "STU001",
-      date: "2024-01-15",
-      amount: "5000",
-      discount: "500"
+      firstName: "Shivansh",
+      lastName: "Sharma",
+      fatherName: "Ankit",
+      dateOfBirth: "2015-02-03",
+      student_edunest_id: "ST-ShivanshSharma20150204",
+      fee_collected: "250",
+      fee_waived: "0",
+      waiver_reason: "",
+      grade: "8",
+      section: "A"
     },
     {
-      firstName: "Sarah",
-      lastName: "Smith",
-      uniqueId: "STU002",
-      date: "2024-01-15",
-      amount: "5000",
-      discount: "0"
+      firstName: "Rahul",
+      lastName: "Patel",
+      fatherName: "Suresh",
+      dateOfBirth: "2014-12-15",
+      student_edunest_id: "ST-RahulPatel20140215",
+      fee_collected: "500",
+      fee_waived: "100",
+      waiver_reason: "Scholarship",
+      grade: "9",
+      section: "B"
     },
     {
-      firstName: "Michael",
-      lastName: "Johnson",
-      uniqueId: "STU003",
-      date: "2024-01-15",
-      amount: "4500",
-      discount: "250"
+      firstName: "Priya",
+      lastName: "Singh",
+      fatherName: "Rajesh",
+      dateOfBirth: "2016-03-10",
+      student_edunest_id: "ST-PriyaSingh20160310",
+      fee_collected: "800",
+      fee_waived: "0",
+      waiver_reason: "",
+      grade: "7",
+      section: "C"
     }
   ];
 
@@ -68,21 +86,29 @@ export default function UploadFees() {
     const worksheetData = [
       // Header row
       [
-        "Student First Name",
-        "Student Last Name", 
-        "Unique ID",
-        "Date (YYYY-MM-DD)",
-        "Amount",
-        "Discount"
+        "firstName",
+        "lastName",
+        "fatherName",
+        "dateOfBirth",
+        "student_edunest_id",
+        "fee_collected",
+        "fee_waived",
+        "waiver_reason",
+        "grade",
+        "section"
       ],
       // Sample data rows
       ...sampleData.map(fees => [
         fees.firstName,
         fees.lastName,
-        fees.uniqueId,
-        fees.date,
-        fees.amount,
-        fees.discount
+        fees.fatherName,
+        fees.dateOfBirth,
+        fees.student_edunest_id,
+        fees.fee_collected,
+        fees.fee_waived,
+        fees.waiver_reason,
+        fees.grade,
+        fees.section
       ])
     ];
 
@@ -90,12 +116,16 @@ export default function UploadFees() {
     
     // Set column widths
     const columnWidths = [
-      { wch: 18 }, // firstName
-      { wch: 18 }, // lastName
-      { wch: 15 }, // uniqueId
-      { wch: 20 }, // date
-      { wch: 12 }, // amount
-      { wch: 12 }  // discount
+      { wch: 15 }, // firstName
+      { wch: 15 }, // lastName
+      { wch: 15 }, // fatherName
+      { wch: 12 }, // dateOfBirth
+      { wch: 25 }, // student_edunest_id
+      { wch: 15 }, // fee_collected
+      { wch: 12 }, // fee_waived
+      { wch: 20 }, // waiver_reason
+      { wch: 8 },  // grade
+      { wch: 10 }  // section
     ];
     worksheet['!cols'] = columnWidths;
 
@@ -132,10 +162,14 @@ export default function UploadFees() {
           .map((row, index) => ({
             firstName: row[0] || '',
             lastName: row[1] || '',
-            uniqueId: row[2] || '',
-            date: row[3] || '',
-            amount: row[4] || '',
-            discount: row[5] || '0'
+            fatherName: row[2] || '',
+            dateOfBirth: row[3] || '',
+            student_edunest_id: row[4] || '',
+            fee_collected: row[5] || '0',
+            fee_waived: row[6] || '0',
+            waiver_reason: row[7] || '',
+            grade: row[8] || '',
+            section: row[9] || ''
           }));
         
         setPreviewData(fees);
@@ -151,6 +185,13 @@ export default function UploadFees() {
     reader.readAsArrayBuffer(file);
   };
 
+  const isValidDate = (dateString: string): boolean => {
+    const regex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!regex.test(dateString)) return false;
+    const date = new Date(dateString);
+    return date instanceof Date && !isNaN(date.getTime());
+  };
+
   const handleUpload = async () => {
     if (!file || previewData.length === 0) return;
 
@@ -160,23 +201,34 @@ export default function UploadFees() {
       // Validate data before upload
       const errors: string[] = [];
       previewData.forEach((fees, index) => {
-        if (!fees.firstName || !fees.lastName) {
-          errors.push(`Row ${index + 2}: First name and last name are required`);
+        if (!fees.firstName) {
+          errors.push(`Row ${index + 2}: First name is required`);
         }
-        if (!fees.uniqueId) {
-          errors.push(`Row ${index + 2}: Unique ID is required`);
+        if (!fees.lastName) {
+          errors.push(`Row ${index + 2}: Last name is required`);
         }
-        if (!fees.amount || isNaN(Number(fees.amount))) {
-          errors.push(`Row ${index + 2}: Valid amount is required`);
+        if (!fees.fatherName) {
+          errors.push(`Row ${index + 2}: Father name is required`);
         }
-        if (fees.discount && isNaN(Number(fees.discount))) {
-          errors.push(`Row ${index + 2}: Discount must be a valid number`);
+        if (!fees.dateOfBirth) {
+          errors.push(`Row ${index + 2}: Date of birth is required`);
+        } else if (!isValidDate(fees.dateOfBirth)) {
+          errors.push(`Row ${index + 2}: Date of birth must be in YYYY-MM-DD format`);
         }
-        if (fees.date && !isValidDate(fees.date)) {
-          errors.push(`Row ${index + 2}: Invalid date format (use YYYY-MM-DD)`);
+        if (!fees.student_edunest_id) {
+          errors.push(`Row ${index + 2}: Student EduNest ID is required`);
         }
-        if (!fees.date) {
-          errors.push(`Row ${index + 2}: Date is required`);
+        if (!fees.fee_collected || isNaN(Number(fees.fee_collected))) {
+          errors.push(`Row ${index + 2}: Valid fee collected amount is required`);
+        }
+        if (fees.fee_waived && isNaN(Number(fees.fee_waived))) {
+          errors.push(`Row ${index + 2}: Fee waived must be a valid number`);
+        }
+        if (!fees.grade) {
+          errors.push(`Row ${index + 2}: Grade is required`);
+        }
+        if (!fees.section) {
+          errors.push(`Row ${index + 2}: Section is required`);
         }
       });
 
@@ -189,13 +241,27 @@ export default function UploadFees() {
         return;
       }
 
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Prepare data for backend API
+      const feesForBackend = previewData.map(fees => ({
+        firstName: fees.firstName,
+        lastName: fees.lastName,
+        fatherName: fees.fatherName,
+        dateOfBirth: fees.dateOfBirth,
+        studentEduNestId: fees.student_edunest_id,
+        dateOfCollection: new Date().toISOString(),
+        feeCollected: parseFloat(fees.fee_collected),
+        feeWaived: parseFloat(fees.fee_waived) || 0,
+        waiverReason: fees.waiver_reason || "",
+        grade: String(fees.grade), 
+        section: String(fees.section) 
+      }));
 
-      /* 
-      // Backend API call - Commented out until backend is ready
-      const response = await api.post('/admin/upload-fees', {
-        fees: previewData
+      // Backend API call
+      const response = await api.post('http://localhost:5199/api/Fees/bulk', feesForBackend, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
       });
       
       // Handle successful response
@@ -204,15 +270,6 @@ export default function UploadFees() {
         message: response.data.message || `Successfully uploaded fees for ${previewData.length} students`,
         successCount: response.data.successCount || previewData.length,
         errorCount: response.data.errorCount || 0
-      });
-      */
-
-      // Hardcoded success response for now
-      setUploadResult({
-        success: true,
-        message: `Successfully uploaded fees for ${previewData.length} students`,
-        successCount: previewData.length,
-        errorCount: 0
       });
 
       // Clear file and preview on success
@@ -227,32 +284,15 @@ export default function UploadFees() {
       }
 
     } catch (error: any) {
-      /*
-      // Backend error handling - Commented out until backend is ready
+      console.error('Upload error:', error);
       setUploadResult({
         success: false,
         message: error.response?.data?.message || 'Upload failed. Please try again.',
         errors: error.response?.data?.errors || []
       });
-      */
-      
-      // Hardcoded error response for testing (uncomment to test error state)
-      // setUploadResult({
-      //   success: false,
-      //   message: 'Upload failed. Please try again.'
-      // });
-      
-      console.error('Upload error:', error);
     } finally {
       setUploading(false);
     }
-  };
-
-  const isValidDate = (dateString: string): boolean => {
-    const regex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!regex.test(dateString)) return false;
-    const date = new Date(dateString);
-    return date instanceof Date && !isNaN(date.getTime());
   };
 
   const formatCurrency = (amount: string) => {
@@ -288,7 +328,7 @@ export default function UploadFees() {
             <h3 className="font-semibold text-green-900 mb-2">How to upload fees:</h3>
             <ol className="list-decimal list-inside space-y-1 text-green-800">
               <li>Download the Excel template below</li>
-              <li>Fill in the fees information (remove sample data)</li>
+              <li>Fill in the fees information (replace sample data with real data)</li>
               <li>Ensure all required fields are completed</li>
               <li>Upload the completed Excel file</li>
               <li>Review the preview and confirm the upload</li>
@@ -296,12 +336,18 @@ export default function UploadFees() {
           </div>
           
           <div className="bg-amber-50 p-4 rounded-lg">
-            <h4 className="font-semibold text-amber-900 mb-2">Important Notes:</h4>
+            <h4 className="font-semibold text-amber-900 mb-2">Required Fields:</h4>
             <ul className="list-disc list-inside space-y-1 text-amber-800 text-sm">
-              <li>All fields are required except discount (defaults to 0)</li>
-              <li>Date format must be YYYY-MM-DD (e.g., 2024-01-15)</li>
-              <li>Amount and discount must be numeric values</li>
-              <li>Unique ID must match existing student records</li>
+              <li><strong>firstName:</strong> Student's first name</li>
+              <li><strong>lastName:</strong> Student's last name</li>
+              <li><strong>fatherName:</strong> Father's name</li>
+              <li><strong>dateOfBirth:</strong> Date of birth in YYYY-MM-DD format</li>
+              <li><strong>student_edunest_id:</strong> Must match existing student records</li>
+              <li><strong>fee_collected:</strong> Amount collected from student (numeric)</li>
+              <li><strong>fee_waived:</strong> Amount waived (numeric, optional - defaults to 0)</li>
+              <li><strong>waiver_reason:</strong> Reason for waiver (optional)</li>
+              <li><strong>grade:</strong> Student's grade/class</li>
+              <li><strong>section:</strong> Student's section</li>
             </ul>
           </div>
           
@@ -351,29 +397,29 @@ export default function UploadFees() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Student Name</TableHead>
+                      <TableHead>Father Name</TableHead>
+                      <TableHead>DOB</TableHead>
                       <TableHead>Student ID</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Discount</TableHead>
-                      <TableHead>Net Amount</TableHead>
+                      <TableHead>Grade</TableHead>
+                      <TableHead>Section</TableHead>
+                      <TableHead>Fee Collected</TableHead>
+                      <TableHead>Fee Waived</TableHead>
+                      <TableHead>Waiver Reason</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {previewData.slice(0, 10).map((fees, index) => {
-                      const amount = parseFloat(fees.amount) || 0;
-                      const discount = parseFloat(fees.discount) || 0;
-                      const netAmount = amount - discount;
-                      
                       return (
                         <TableRow key={index}>
                           <TableCell>{fees.firstName} {fees.lastName}</TableCell>
-                          <TableCell>{fees.uniqueId}</TableCell>
-                          <TableCell>{fees.date}</TableCell>
-                          <TableCell>{formatCurrency(fees.amount)}</TableCell>
-                          <TableCell>{formatCurrency(fees.discount)}</TableCell>
-                          <TableCell className="font-medium">
-                            {formatCurrency(netAmount.toString())}
-                          </TableCell>
+                          <TableCell>{fees.fatherName}</TableCell>
+                          <TableCell>{fees.dateOfBirth}</TableCell>
+                          <TableCell className="font-mono text-xs">{fees.student_edunest_id}</TableCell>
+                          <TableCell>{fees.grade}</TableCell>
+                          <TableCell>{fees.section}</TableCell>
+                          <TableCell>{formatCurrency(fees.fee_collected)}</TableCell>
+                          <TableCell>{formatCurrency(fees.fee_waived)}</TableCell>
+                          <TableCell className="text-sm">{fees.waiver_reason || '-'}</TableCell>
                         </TableRow>
                       );
                     })}
@@ -389,36 +435,24 @@ export default function UploadFees() {
               {/* Summary */}
               <div className="bg-gray-50 p-4 rounded-lg">
                 <h4 className="font-semibold mb-2">Upload Summary:</h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                   <div>
                     <span className="text-gray-600">Total Records:</span>
                     <p className="font-medium">{previewData.length}</p>
                   </div>
                   <div>
-                    <span className="text-gray-600">Total Amount:</span>
+                    <span className="text-gray-600">Total Collected:</span>
                     <p className="font-medium text-green-600">
                       {formatCurrency(
-                        previewData.reduce((sum, fees) => sum + (parseFloat(fees.amount) || 0), 0).toString()
+                        previewData.reduce((sum, fees) => sum + (parseFloat(fees.fee_collected) || 0), 0).toString()
                       )}
                     </p>
                   </div>
                   <div>
-                    <span className="text-gray-600">Total Discount:</span>
+                    <span className="text-gray-600">Total Waived:</span>
                     <p className="font-medium text-orange-600">
                       {formatCurrency(
-                        previewData.reduce((sum, fees) => sum + (parseFloat(fees.discount) || 0), 0).toString()
-                      )}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Net Amount:</span>
-                    <p className="font-medium text-blue-600">
-                      {formatCurrency(
-                        previewData.reduce((sum, fees) => {
-                          const amount = parseFloat(fees.amount) || 0;
-                          const discount = parseFloat(fees.discount) || 0;
-                          return sum + (amount - discount);
-                        }, 0).toString()
+                        previewData.reduce((sum, fees) => sum + (parseFloat(fees.fee_waived) || 0), 0).toString()
                       )}
                     </p>
                   </div>
@@ -475,7 +509,7 @@ export default function UploadFees() {
                 <TableHead>Date</TableHead>
                 <TableHead>File Name</TableHead>
                 <TableHead>Records Count</TableHead>
-                <TableHead>Total Amount</TableHead>
+                <TableHead>Total Collected</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>

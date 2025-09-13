@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MessageSquare, Calendar, Bell } from "lucide-react";
-// import { api } from "@/services/api"; // Commented out since backend not present
 
 interface Communication {
   id: string;
@@ -15,60 +15,38 @@ interface Communication {
 }
 
 export default function Comms() {
+  const { token } = useAuth();
   const [communications, setCommunications] = useState<Communication[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Mock data for testing (same as admin page but only active ones)
-  const mockComms: Communication[] = [
-    {
-      id: "1",
-      title: "School Reopening Notice",
-      content: "Dear Students and Parents, We are pleased to announce that school will reopen on January 20th, 2024. Please ensure all students arrive on time with proper uniforms and necessary materials.",
-      type: "notice",
-      isActive: true,
-      createdAt: "2024-01-15T10:30:00Z",
-      createdBy: "Admin"
-    },
-    {
-      id: "2",
-      title: "Annual Sports Day",
-      content: "We are excited to announce our Annual Sports Day scheduled for February 15th, 2024. All students are encouraged to participate in various sports activities. Registration forms are available at the front office.",
-      type: "announcement",
-      isActive: true,
-      createdAt: "2024-01-14T14:20:00Z",
-      createdBy: "Admin"
-    },
-    {
-      id: "4",
-      title: "Parent-Teacher Meeting",
-      content: "We will be conducting Parent-Teacher meetings on January 30th, 2024. Please schedule your appointments through the school office or online portal.",
-      type: "notice",
-      isActive: true,
-      createdAt: "2024-01-12T11:45:00Z",
-      createdBy: "Admin"
-    }
-  ];
-
   useEffect(() => {
     loadCommunications();
+    // eslint-disable-next-line
   }, []);
 
   const loadCommunications = async () => {
     try {
       setLoading(true);
-      
-      /* 
-      // Backend API call - Commented out until backend is ready
-      const response = await api.get('/communications');
-      setCommunications(response.data.communications);
-      */
-
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      // Mock data - only show active communications
-      setCommunications(mockComms.filter(comm => comm.isActive));
+      const url = "http://localhost:5199/api/Communication?modifiedAfter=2025-07-01T00:00:00.000000Z&status=Active";
+      const res = await fetch(url, {
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      });
+      if (!res.ok) throw new Error("Failed to fetch communications");
+      const data = await res.json();
+      // Map status to isActive for UI compatibility
+      setCommunications(
+        data
+          .filter((item: any) => item.status?.toLowerCase() === "active")
+          .map((item: any) => ({
+            ...item,
+            isActive: true
+          }))
+      );
     } catch (error) {
+      setCommunications([]);
       console.error('Error loading communications:', error);
     } finally {
       setLoading(false);
@@ -130,7 +108,6 @@ export default function Comms() {
         ) : (
           communications.map((comm) => {
             const IconComponent = getIcon(comm.type);
-            
             return (
               <Card key={comm.id} className="hover:shadow-lg transition-shadow">
                 <CardHeader className="pb-3">
@@ -175,6 +152,6 @@ export default function Comms() {
           </p>
         </CardContent>
       </Card>
-    </div>
+      </div>
   );
 }

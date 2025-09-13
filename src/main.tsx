@@ -15,6 +15,10 @@ import Comms from "@/pages/Comms";
 import UploadAttendance from "@/pages/staff/UploadAttendance";
 import StudentDetails from "@/pages/staff/StudentDetails";
 import "./index.css";
+import FirstReset from "./pages/FirstReset";
+import AddStudent from "./pages/admin/AddStudent";
+import UploadMarks from "@/pages/staff/UploadMarks";
+import AddStaff from "@/pages/admin/AddStaff";
 
 // Protected route wrapper
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -38,6 +42,10 @@ const router = createBrowserRouter([
     element: <Login />
   },
   {
+    path: "/first-reset",
+    element: <FirstReset />
+  },
+  {
     path: "/",
     element: <ProtectedRoute><AppLayout /></ProtectedRoute>,
     children: [
@@ -45,12 +53,16 @@ const router = createBrowserRouter([
       { path: "/students", element: <Students /> },
       { path: "/settings", element: <Settings /> },
       { path: "/admin/bulk-add-students", element: <AddBulkStudents /> },
+      { path: "/admin/add-student", element: <AddStudent /> },
       { path: "/admin/update-student", element: <UpdateStudent /> },
       { path: "/admin/upload-fees", element: <UploadFees /> },
       { path: "/admin/comms", element: <ManageComms /> },
+      { path: "/admin/add-staff", element: <AddStaff /> },
       { path: "/comms", element: <Comms /> },
       { path: "/staff/upload-attendance", element: <UploadAttendance /> },
-      { path: "/staff/student-details", element: <StudentDetails /> }
+      { path: "/staff/student-details", element: <StudentDetails /> },
+      { path: "/staff/upload-marks", element: <UploadMarks /> },
+
     ],
   },
 ]);
