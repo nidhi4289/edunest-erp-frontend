@@ -27,7 +27,7 @@ export default function UploadMarks() {
     setLoading(true);
     const headers: Record<string, string> = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    fetch(`http://localhost:5199/api/MasterData/assessments?academicYear=${academicYear}`, { headers })
+  fetch(`${import.meta.env.VITE_API_URL}/api/MasterData/assessments?academicYear=${academicYear}`, { headers })
       .then(res => res.json())
       .then(data => setAssessments(data || []))
       .finally(() => setLoading(false));
@@ -84,7 +84,7 @@ export default function UploadMarks() {
     if (!selectedGrade || !selectedSection || !selectedAssessment || !selectedSubject) return;
     setSearching(true);
     try {
-      const res = await fetch(`http://localhost:5199/students?grade=${encodeURIComponent(selectedGrade)}&section=${encodeURIComponent(selectedSection)}`, {
+  const res = await fetch(`${import.meta.env.VITE_API_URL}/students?grade=${encodeURIComponent(selectedGrade)}&section=${encodeURIComponent(selectedSection)}`, {
         headers: {
           'Authorization': token ? `Bearer ${token}` : '',
         },
@@ -120,7 +120,7 @@ export default function UploadMarks() {
         gradeAwarded: '',
         remarks: ''
       }));
-      const res = await fetch('http://localhost:5199/api/StudentMarks/bulk', {
+  const res = await fetch(`${import.meta.env.VITE_API_URL}/api/StudentMarks/bulk`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

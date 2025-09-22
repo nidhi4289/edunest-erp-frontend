@@ -8,6 +8,23 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import * as XLSX from 'xlsx';
 import { api } from "@/services/api";
 import { useAuth } from "@/context/AuthContext";
+import { toProperCase } from "@/lib/utils";
+
+// Helper function to convert text to camel case
+const toCamelCase = (text: string): string => {
+  if (!text || typeof text !== 'string') return text;
+  
+  return text
+    .toLowerCase()
+    .split(' ')
+    .map((word, index) => {
+      if (index === 0) {
+        return word;
+      }
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join('');
+};
 
 interface StudentData {
   firstName: string;
@@ -58,8 +75,8 @@ export default function AddBulkStudents() {
       fatherEmail: "abc@gh.lkj",
       motherName: "Meenu Sharma",
       motherEmail: "avb@gh.lkj",
-      grade: "8",
-      section: "Lotus",
+      grade: "7",
+      section: "A",
       status: "Active",
       admissionNumber: "1123456780",
       phoneNumber: "8826987650",
@@ -67,7 +84,7 @@ export default function AddBulkStudents() {
       email: "abc@gh.lkj",
       addressLine1: "MJ 44",
       addressLine2: "Jawahar",
-      city: "Rtalam",
+      city: "Ratlam",
       state: "MP",
       zipCode: "457001",
       country: "India"
@@ -80,8 +97,8 @@ export default function AddBulkStudents() {
       fatherEmail: "suresh@example.com",
       motherName: "Priya Patel",
       motherEmail: "priya@example.com",
-      grade: "9",
-      section: "Rose",
+      grade: "7",
+      section: "B",
       status: "Active",
       admissionNumber: "1123456781",
       phoneNumber: "9876543210",
@@ -89,8 +106,8 @@ export default function AddBulkStudents() {
       email: "rahul@example.com",
       addressLine1: "45 Park Street",
       addressLine2: "Sector 7",
-      city: "Mumbai",
-      state: "Maharashtra",
+      city: "Ratlam",
+      state: "MP",
       zipCode: "400001",
       country: "India"
     }
@@ -106,7 +123,7 @@ export default function AddBulkStudents() {
       [
         "firstName",
         "lastName",
-        "dateOfBirth",
+        "dateOfBirth (YYYY-MM-DD)",
         "fatherName",
         "fatherEmail",
         "motherName",
@@ -125,11 +142,11 @@ export default function AddBulkStudents() {
         "zipCode",
         "country"
       ],
-      // Sample data rows
+      // Sample data rows - keep dates as text strings
       ...sampleData.map(student => [
         student.firstName,
         student.lastName,
-        student.dateOfBirth,
+        student.dateOfBirth, // Keep as text string
         student.fatherName,
         student.fatherEmail,
         student.motherName,
@@ -156,7 +173,7 @@ export default function AddBulkStudents() {
     const columnWidths = [
       { wch: 15 }, // firstName
       { wch: 15 }, // lastName
-      { wch: 12 }, // dateOfBirth
+      { wch: 18 }, // dateOfBirth - wider for format info
       { wch: 15 }, // fatherName
       { wch: 20 }, // fatherEmail
       { wch: 15 }, // motherName
@@ -176,6 +193,26 @@ export default function AddBulkStudents() {
       { wch: 10 }  // country
     ];
     worksheet['!cols'] = columnWidths;
+
+    // Format dateOfBirth column (column C, index 2) as text to prevent Excel auto-formatting
+    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1:T100');
+    for (let row = 1; row <= range.e.r; row++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: row, c: 2 }); // Column C (dateOfBirth)
+      if (worksheet[cellAddress]) {
+        worksheet[cellAddress].t = 's'; // Set cell type as string/text
+        worksheet[cellAddress].z = '@'; // Set number format as text
+      }
+    }
+
+    // Add data validation and instructions as comments
+    if (!worksheet['!comments']) worksheet['!comments'] = [];
+    
+    // Add comment to dateOfBirth header cell
+    worksheet['!comments'].push({
+      ref: 'C1',
+      a: 'System',
+      t: 'IMPORTANT: Keep date format as YYYY-MM-DD (e.g., 2015-08-31). Do not let Excel change this format!'
+    });
 
     // Add worksheet to workbook
     XLSX.utils.book_append_sheet(workbook, worksheet, "Students");
@@ -208,12 +245,12 @@ export default function AddBulkStudents() {
           .slice(1)
           .filter(row => row.length > 0 && row[0]) // Filter out empty rows
           .map((row, index) => ({
-            firstName: row[0] || '',
-            lastName: row[1] || '',
-            dateOfBirth: row[2] || '',
-            fatherName: row[3] || '',
+            firstName: toProperCase(row[0] || ''),
+            lastName: toProperCase(row[1] || ''),
+            dateOfBirth: parseAndFormatDate(row[2]) || '', // Use enhanced date parsing
+            fatherName: toProperCase(row[3] || ''),
             fatherEmail: row[4] || '',
-            motherName: row[5] || '',
+            motherName: toProperCase(row[5] || ''),
             motherEmail: row[6] || '',
             grade: row[7] || '',
             section: row[8] || '',
@@ -224,14 +261,29 @@ export default function AddBulkStudents() {
             email: row[13] || '',
             addressLine1: row[14] || '',
             addressLine2: row[15] || '',
-            city: row[16] || '',
-            state: row[17] || '',
+            city: toProperCase(row[16] || ''),
+            state: toProperCase(row[17] || ''),
             zipCode: row[18] || '',
-            country: row[19] || 'India'
+            country: toProperCase(row[19] || 'India')
           }));
         
         setPreviewData(students);
         setShowPreview(true);
+        
+        // Check for potential date format issues
+        const dateIssues = students.filter(student => 
+          student.dateOfBirth && !isValidDate(student.dateOfBirth)
+        );
+        
+        if (dateIssues.length > 0) {
+          setUploadResult({
+            success: false,
+            message: `Found ${dateIssues.length} row(s) with date format issues. Please check the preview and fix dates in YYYY-MM-DD format.`,
+            errors: dateIssues.slice(0, 3).map((student, idx) => 
+              `Row ${students.indexOf(student) + 2}: Invalid date "${student.dateOfBirth}" for ${student.firstName} ${student.lastName}`
+            )
+          });
+        }
       } catch (error) {
         console.error('Error reading file:', error);
         setUploadResult({
@@ -261,8 +313,9 @@ export default function AddBulkStudents() {
         if (!student.grade) {
           errors.push(`Row ${index + 2}: Grade is required`);
         }
+        // Enhanced date validation - check if date was successfully parsed
         if (student.dateOfBirth && !isValidDate(student.dateOfBirth)) {
-          errors.push(`Row ${index + 2}: Invalid date of birth format (use YYYY-MM-DD)`);
+          errors.push(`Row ${index + 2}: Invalid or unparseable date of birth. Use YYYY-MM-DD format`);
         }
       });
 
@@ -278,12 +331,12 @@ export default function AddBulkStudents() {
       // Prepare data for backend - add eduNestId and format dates
       const studentsForBackend = previewData.map(student => ({
         eduNestId: "", // Backend will generate this
-        firstName: student.firstName,
-        lastName: student.lastName,
+        firstName: toCamelCase(student.firstName),
+        lastName: toCamelCase(student.lastName),
         dateOfBirth: student.dateOfBirth ? new Date(student.dateOfBirth).toISOString() : null,
-        fatherName: student.fatherName,
+        fatherName: toCamelCase(student.fatherName),
         fatherEmail: student.fatherEmail,
-        motherName: student.motherName,
+        motherName: toCamelCase(student.motherName),
         motherEmail: student.motherEmail,
         grade: typeof student.grade === 'number' ? String(student.grade) : (student.grade ?? '').toString(),
         section: student.section,
@@ -294,14 +347,14 @@ export default function AddBulkStudents() {
         email: student.email,
         addressLine1: student.addressLine1,
         addressLine2: student.addressLine2,
-        city: student.city,
+        city: toCamelCase(student.city),
         state: student.state,
         zipCode: student.zipCode,
         country: student.country
       }));
 
-      // Backend API call
-      const response = await api.post('http://localhost:5199/Students/bulk-add', studentsForBackend, {
+  // Backend API call
+  const response = await api.post(`${import.meta.env.VITE_API_URL}/Students/bulk-add`, studentsForBackend, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -346,6 +399,77 @@ export default function AddBulkStudents() {
     return date instanceof Date && !isNaN(date.getTime());
   };
 
+  // Enhanced date parsing function to handle multiple formats
+  const parseAndFormatDate = (dateValue: any): string => {
+    if (!dateValue) return '';
+    
+    // If it's already a string in YYYY-MM-DD format, return as is
+    if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+      return dateValue;
+    }
+    
+    // If it's a number (Excel serial date), convert it
+    if (typeof dateValue === 'number') {
+      // Excel serial date starts from 1900-01-01 (serial 1)
+      // JavaScript Date starts from 1970-01-01
+      const excelEpoch = new Date(1900, 0, 1);
+      const date = new Date(excelEpoch.getTime() + (dateValue - 1) * 24 * 60 * 60 * 1000);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString().split('T')[0]; // Return YYYY-MM-DD format
+      }
+    }
+    
+    // Try to parse as various date formats
+    const dateString = String(dateValue).trim();
+    
+    // Try different date formats
+    const formats = [
+      /^(\d{4})-(\d{1,2})-(\d{1,2})$/, // YYYY-MM-DD or YYYY-M-D
+      /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/, // MM/DD/YYYY or M/D/YYYY
+      /^(\d{1,2})-(\d{1,2})-(\d{4})$/, // MM-DD-YYYY or M-D-YYYY
+      /^(\d{4})\/(\d{1,2})\/(\d{1,2})$/, // YYYY/MM/DD or YYYY/M/D
+    ];
+    
+    for (const format of formats) {
+      const match = dateString.match(format);
+      if (match) {
+        let year, month, day;
+        
+        if (format === formats[0] || format === formats[3]) {
+          // YYYY-MM-DD or YYYY/MM/DD format
+          [, year, month, day] = match;
+        } else {
+          // MM/DD/YYYY or MM-DD-YYYY format
+          [, month, day, year] = match;
+        }
+        
+        // Ensure month and day are two digits
+        month = month.padStart(2, '0');
+        day = day.padStart(2, '0');
+        
+        const formattedDate = `${year}-${month}-${day}`;
+        
+        // Validate the constructed date
+        const testDate = new Date(formattedDate);
+        if (!isNaN(testDate.getTime())) {
+          return formattedDate;
+        }
+      }
+    }
+    
+    // Try direct Date parsing as last resort
+    try {
+      const date = new Date(dateString);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString().split('T')[0];
+      }
+    } catch (e) {
+      // Ignore error and return empty string
+    }
+    
+    return ''; // Return empty string if all parsing attempts fail
+  };
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -376,10 +500,19 @@ export default function AddBulkStudents() {
               <li>Download the Excel template below</li>
               <li>Fill in the student information (replace sample data with real data)</li>
               <li>Ensure all required fields are completed</li>
-              <li>Use proper date format (YYYY-MM-DD) for dateOfBirth</li>
+              <li><strong>IMPORTANT:</strong> Keep date format as YYYY-MM-DD (e.g., 2015-08-31)</li>
+              <li>If Excel changes date format, select the date column and format it as "Text"</li>
               <li>Upload the completed Excel file</li>
               <li>Review the preview and confirm the upload</li>
             </ol>
+          </div>
+          
+          <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
+            <h3 className="font-semibold text-amber-900 mb-2">📅 Date Format Important Note:</h3>
+            <p className="text-amber-800 text-sm">
+              To prevent Excel from auto-converting dates: Right-click the "dateOfBirth" column → 
+              Format Cells → Category: Text → OK. This keeps dates in YYYY-MM-DD format.
+            </p>
           </div>
           
           <div className="flex items-center gap-4">
@@ -439,7 +572,19 @@ export default function AddBulkStudents() {
                     {previewData.slice(0, 10).map((student, index) => (
                       <TableRow key={index}>
                         <TableCell>{student.firstName} {student.lastName}</TableCell>
-                        <TableCell>{student.dateOfBirth}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <span className={student.dateOfBirth && isValidDate(student.dateOfBirth) ? 'text-green-600' : 'text-red-600'}>
+                              {student.dateOfBirth || 'Not provided'}
+                            </span>
+                            {student.dateOfBirth && isValidDate(student.dateOfBirth) && (
+                              <CheckCircle className="h-3 w-3 text-green-600" />
+                            )}
+                            {student.dateOfBirth && !isValidDate(student.dateOfBirth) && (
+                              <AlertCircle className="h-3 w-3 text-red-600" />
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell>{student.grade}</TableCell>
                         <TableCell>{student.section}</TableCell>
                         <TableCell>{student.status}</TableCell>

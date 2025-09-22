@@ -13,7 +13,7 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [tenantId, setTenantId] = useState("");
+
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -21,16 +21,18 @@ export default function Login() {
     setError("");
     
     try {
+
       const response = await api.post("/Auth/login", {
         userId,
         password,
-        tenantId
+        tenantId: import.meta.env.VITE_TENANT_ID
       });
 
       const { token, role, passwordResetRequired, userGuid } = response.data;
 
+
       if (passwordResetRequired) {
-        navigate("/first-reset", { state: { userId, tenantId } });
+  navigate("/first-reset", { state: { userId, tenantId: import.meta.env.VITE_TENANT_ID } });
         return;
       }
 
@@ -38,7 +40,7 @@ export default function Login() {
         throw new Error("No token received from server");
       }
 
-      login(token, role, userGuid); // Pass userGuid to context
+  await login(token, role, userGuid, userId); // Pass userGuid and userId to context and fetch master data
       navigate("/dashboard");
     } catch (err: any) {
       console.error("Login error:", err);
@@ -82,18 +84,7 @@ export default function Login() {
                 disabled={loading}
               />
             </div>
-              <div className="space-y-2">
-              <label htmlFor="tenantId" className="text-sm font-medium">Tenant ID</label>
-              <Input
-                id="tenantId"
-                type="text"
-                placeholder="Enter tenant id"
-                value={tenantId}
-                onChange={(e) => setTenantId(e.target.value)}
-                required
-                disabled={loading}
-              />
-            </div>
+
             
             {error && (
               <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md">

@@ -7,10 +7,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Edit, Search, Save, User, ChevronLeft, ChevronRight, DollarSign, Calendar, FileText, X, Check } from "lucide-react";
+import { Edit, Search, Save, User, ChevronLeft, ChevronRight, DollarSign, Calendar, FileText, X, Check, CheckCircle, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { api } from "@/services/api";
 import { useAuth } from "@/context/AuthContext";
+import { toProperCase } from "@/lib/utils";
 
 interface Student {
   eduNestId: string;
@@ -66,6 +67,13 @@ interface UpdateResult {
   message: string;
 }
 
+interface ResultDialogState {
+  open: boolean;
+  title: string;
+  message: string;
+  type: 'success' | 'error';
+}
+
 interface FeeEditData {
   feeCollected: number;
   feeWaived: number;
@@ -87,6 +95,12 @@ export default function UpdateStudent() {
   const [searching, setSearching] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [updateResult, setUpdateResult] = useState<UpdateResult | null>(null);
+  const [resultDialog, setResultDialog] = useState<ResultDialogState>({
+    open: false,
+    title: '',
+    message: '',
+    type: 'success'
+  });
   
   // Fee records state
   const [feeRecords, setFeeRecords] = useState<FeeRecord[]>([]);
@@ -103,6 +117,12 @@ export default function UpdateStudent() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [updatingFee, setUpdatingFee] = useState(false);
   const [feeUpdateResult, setFeeUpdateResult] = useState<UpdateResult | null>(null);
+  const [feeResultDialog, setFeeResultDialog] = useState<ResultDialogState>({
+    open: false,
+    title: '',
+    message: '',
+    type: 'success'
+  });
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -114,9 +134,11 @@ export default function UpdateStudent() {
     const hasSearchCriteria = Object.values(searchCriteria).some(value => value.trim() !== "");
     
     if (!hasSearchCriteria) {
-      setUpdateResult({
-        success: false,
-        message: "Please enter at least one search criteria (First Name, Last Name, or Grade)"
+      setResultDialog({
+        open: true,
+        title: 'Search Criteria Required',
+        message: 'Please enter at least one search criteria (First Name, Last Name, or Grade)',
+        type: 'error'
       });
       return;
     }
@@ -137,8 +159,8 @@ export default function UpdateStudent() {
         params.append('grade', searchCriteria.grade.trim());
       }
 
-      // Backend API call
-      const response = await api.get(`http://localhost:5199/Students?${params.toString()}`, {
+  // Backend API call
+  const response = await api.get(`${import.meta.env.VITE_API_URL}/Students?${params.toString()}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -149,17 +171,21 @@ export default function UpdateStudent() {
       setCurrentPage(1);
       
       if (response.data.length === 0) {
-        setUpdateResult({
-          success: false,
-          message: "No students found matching the search criteria"
+        setResultDialog({
+          open: true,
+          title: 'No Results',
+          message: 'No students found matching the search criteria',
+          type: 'error'
         });
       }
 
     } catch (error: any) {
       console.error('Search error:', error);
-      setUpdateResult({
-        success: false,
-        message: error.response?.data?.message || "Search failed. Please try again."
+      setResultDialog({
+        open: true,
+        title: 'Search Failed',
+        message: error.response?.data?.message || 'Search failed. Please try again.',
+        type: 'error'
       });
     } finally {
       setSearching(false);
@@ -170,7 +196,7 @@ export default function UpdateStudent() {
     setLoadingFees(true);
     setFeeError(null);
     try {
-      const response = await api.get(`http://localhost:5199/api/Fees/${eduNestId}`, {
+  const response = await api.get(`${import.meta.env.VITE_API_URL}/api/Fees/${eduNestId}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -210,9 +236,15 @@ export default function UpdateStudent() {
 
   const handleFieldChange = (fieldName: string, value: string) => {
     if (editedStudent) {
+      // List of fields that should have proper case formatting
+      const nameFields = ['firstName', 'lastName', 'fatherName', 'motherName', 'city', 'state', 'country'];
+      
+      // Apply proper case conversion for name fields
+      const processedValue = nameFields.includes(fieldName) ? toProperCase(value) : value;
+      
       setEditedStudent(prev => ({
         ...prev!,
-        [fieldName]: value
+        [fieldName]: processedValue
       }));
     }
   };
@@ -224,17 +256,19 @@ export default function UpdateStudent() {
     setUpdateResult(null);
 
     try {
-      // Backend API call to update student
-      const response = await api.put(`http://localhost:5199/Students/${editedStudent.eduNestId}`, editedStudent, {
+  // Backend API call to update student
+  const response = await api.put(`${import.meta.env.VITE_API_URL}/Students/${editedStudent.eduNestId}`, editedStudent, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
       
-      setUpdateResult({
-        success: true,
-        message: "Student updated successfully"
+      setResultDialog({
+        open: true,
+        title: 'Update Successful',
+        message: 'Student updated successfully',
+        type: 'success'
       });
 
       // Update the student in search results
@@ -249,9 +283,11 @@ export default function UpdateStudent() {
 
     } catch (error: any) {
       console.error('Update error:', error);
-      setUpdateResult({
-        success: false,
-        message: error.response?.data?.message || "Update failed. Please try again."
+      setResultDialog({
+        open: true,
+        title: 'Update Failed',
+        message: error.response?.data?.message || 'Update failed. Please try again.',
+        type: 'error'
       });
     } finally {
       setUpdating(false);
@@ -286,17 +322,21 @@ export default function UpdateStudent() {
     try {
       // Validation
       if (editFeeData.feeCollected < 0) {
-        setFeeUpdateResult({
-          success: false,
-          message: "Fee collected cannot be negative"
+        setFeeResultDialog({
+          open: true,
+          title: 'Validation Error',
+          message: 'Fee collected cannot be negative',
+          type: 'error'
         });
         return;
       }
 
       if (editFeeData.feeWaived < 0) {
-        setFeeUpdateResult({
-          success: false,
-          message: "Fee waived cannot be negative"
+        setFeeResultDialog({
+          open: true,
+          title: 'Validation Error',
+          message: 'Fee waived cannot be negative',
+          type: 'error'
         });
         return;
       }
@@ -304,9 +344,11 @@ export default function UpdateStudent() {
       // Find the original fee record
       const originalFee = feeRecords.find(fee => fee.id === editingFeeId);
       if (!originalFee) {
-        setFeeUpdateResult({
-          success: false,
-          message: "Original fee record not found."
+        setFeeResultDialog({
+          open: true,
+          title: 'Error',
+          message: 'Original fee record not found.',
+          type: 'error'
         });
         return;
       }
@@ -319,17 +361,19 @@ export default function UpdateStudent() {
         waiverReason: editFeeData.waiverReason.trim() || ""
       };
 
-      // Backend API call to update fee
-      const response = await api.put(`http://localhost:5199/api/Fees/${editingFeeId}`, updatePayload, {
+  // Backend API call to update fee
+  const response = await api.put(`${import.meta.env.VITE_API_URL}/api/Fees/${editingFeeId}`, updatePayload, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
 
-      setFeeUpdateResult({
-        success: true,
-        message: "Fee record updated successfully"
+      setFeeResultDialog({
+        open: true,
+        title: 'Update Successful',
+        message: 'Fee record updated successfully',
+        type: 'success'
       });
 
       // Update the fee record in the list
@@ -347,17 +391,16 @@ export default function UpdateStudent() {
         )
       );
 
-      // Close dialog after a short delay
-      setTimeout(() => {
-        setIsEditDialogOpen(false);
-        setEditingFeeId(null);
-      }, 1500);
+      // Don't close dialog automatically - let user click OK
+      // User will close via the dialog OK button
 
     } catch (error: any) {
       console.error('Fee update error:', error);
-      setFeeUpdateResult({
-        success: false,
-        message: error.response?.data?.message || "Failed to update fee record. Please try again."
+      setFeeResultDialog({
+        open: true,
+        title: 'Update Failed',
+        message: error.response?.data?.message || 'Failed to update fee record. Please try again.',
+        type: 'error'
       });
     } finally {
       setUpdatingFee(false);
@@ -833,14 +876,6 @@ export default function UpdateStudent() {
               />
             </div>
 
-            {feeUpdateResult && (
-              <Alert className={feeUpdateResult.success ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}>
-                <AlertDescription className={feeUpdateResult.success ? "text-green-800" : "text-red-800"}>
-                  {feeUpdateResult.message}
-                </AlertDescription>
-              </Alert>
-            )}
-
             <div className="flex items-center gap-2 pt-4">
               <Button
                 onClick={handleSaveFee}
@@ -870,14 +905,69 @@ export default function UpdateStudent() {
         </DialogContent>
       </Dialog>
 
-      {/* Update Result */}
-      {updateResult && (
-        <Alert className={updateResult.success ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}>
-          <AlertDescription className={updateResult.success ? "text-green-800" : "text-red-800"}>
-            {updateResult.message}
-          </AlertDescription>
-        </Alert>
-      )}
+      {/* Student Update Result Dialog */}
+      <Dialog open={resultDialog.open} onOpenChange={(open) => setResultDialog(prev => ({ ...prev, open }))}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className={`flex items-center gap-2 ${
+              resultDialog.type === 'success' ? 'text-green-600' : 'text-red-600'
+            }`}>
+              {resultDialog.type === 'success' ? (
+                <CheckCircle className="h-5 w-5" />
+              ) : (
+                <AlertCircle className="h-5 w-5" />
+              )}
+              {resultDialog.title}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-gray-700">{resultDialog.message}</p>
+          </div>
+          <div className="flex justify-end">
+            <Button 
+              onClick={() => setResultDialog(prev => ({ ...prev, open: false }))}
+              className="bg-gradient-to-r from-green-500 to-blue-600"
+            >
+              OK
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Fee Update Result Dialog */}
+      <Dialog open={feeResultDialog.open} onOpenChange={(open) => setFeeResultDialog(prev => ({ ...prev, open }))}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className={`flex items-center gap-2 ${
+              feeResultDialog.type === 'success' ? 'text-green-600' : 'text-red-600'
+            }`}>
+              {feeResultDialog.type === 'success' ? (
+                <CheckCircle className="h-5 w-5" />
+              ) : (
+                <AlertCircle className="h-5 w-5" />
+              )}
+              {feeResultDialog.title}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-gray-700">{feeResultDialog.message}</p>
+          </div>
+          <div className="flex justify-end">
+            <Button 
+              onClick={() => {
+                setFeeResultDialog(prev => ({ ...prev, open: false }));
+                if (feeResultDialog.type === 'success') {
+                  setIsEditDialogOpen(false);
+                  setEditingFeeId(null);
+                }
+              }}
+              className="bg-gradient-to-r from-green-500 to-blue-600"
+            >
+              OK
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

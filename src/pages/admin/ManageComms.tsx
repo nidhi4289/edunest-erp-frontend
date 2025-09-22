@@ -25,7 +25,7 @@ interface PostResult {
   message: string;
 }
 
-const API_BASE = "http://localhost:5199/api/Communication";
+const API_BASE = `${import.meta.env.VITE_API_URL}/api/Communication`;
 
 export default function ManageComms() {
   const { userGuid, token } = useAuth();

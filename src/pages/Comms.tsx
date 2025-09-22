@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { Navigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MessageSquare, Calendar, Bell } from "lucide-react";
@@ -15,9 +16,14 @@ interface Communication {
 }
 
 export default function Comms() {
-  const { token } = useAuth();
+  const { token, isAuthenticated } = useAuth();
   const [communications, setCommunications] = useState<Communication[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // This should not be needed since route is protected, but adding as extra safety
+  if (!isAuthenticated || !token) {
+    return <Navigate to="/login" replace />;
+  }
 
   useEffect(() => {
     loadCommunications();
@@ -27,7 +33,7 @@ export default function Comms() {
   const loadCommunications = async () => {
     try {
       setLoading(true);
-      const url = "http://localhost:5199/api/Communication?modifiedAfter=2025-07-01T00:00:00.000000Z&status=Active";
+  const url = `${import.meta.env.VITE_API_URL}/api/Communication?modifiedAfter=2025-07-01T00:00:00.000000Z&status=Active`;
       const res = await fetch(url, {
         headers: {
           "Content-Type": "application/json",

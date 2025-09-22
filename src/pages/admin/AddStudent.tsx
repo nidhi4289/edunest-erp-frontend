@@ -7,10 +7,13 @@ import { Label } from "@/components/ui/label";
 // Or, if you have a Label component in another location, use its correct path.
 // import { Label } from "../components/Label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { UserPlus, Save, AlertCircle, CheckCircle } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { UserPlus, Save } from "lucide-react";
+
 import { api } from "@/services/api";
 import { useAuth } from "@/context/AuthContext";
+import { toProperCase } from "@/lib/utils";
+import { getAllStates, getCitiesByState } from "@/config/locationConfig";
 
 interface StudentForm {
   firstName: string;
@@ -39,16 +42,26 @@ interface ValidationErrors {
   [key: string]: string;
 }
 
-interface SubmitResult {
-  success: boolean;
+interface ResultDialogState {
+  open: boolean;
+  title: string;
   message: string;
+  type: 'success' | 'error';
 }
 
 export default function AddStudent() {
-  const { token } = useAuth();
+  const { token, masterDataClasses } = useAuth();
   const [submitting, setSubmitting] = useState(false);
-  const [submitResult, setSubmitResult] = useState<SubmitResult | null>(null);
   const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
+  const [resultDialog, setResultDialog] = useState<ResultDialogState>({
+    open: false,
+    title: '',
+    message: '',
+    type: 'success'
+  });
+  
+  // Location management
+  const [availableCities, setAvailableCities] = useState<string[]>([]);
 
   const [studentForm, setStudentForm] = useState<StudentForm>({
     firstName: "",
@@ -74,10 +87,29 @@ export default function AddStudent() {
   });
 
   const handleInputChange = (field: keyof StudentForm, value: string) => {
+    // List of fields that should have proper case formatting
+    const nameFields = ['firstName', 'lastName', 'fatherName', 'motherName', 'city', 'state', 'country'];
+    
+    // Apply proper case conversion for name fields
+    const processedValue = nameFields.includes(field) ? toProperCase(value) : value;
+    
     setStudentForm(prev => ({
       ...prev,
-      [field]: value
+      [field]: processedValue
     }));
+
+    // Handle state selection - update available cities
+    if (field === 'state') {
+      const cities = getCitiesByState(processedValue);
+      setAvailableCities(cities);
+      // Reset city if it's not available in the new state
+      if (studentForm.city && !cities.includes(studentForm.city)) {
+        setStudentForm(prev => ({
+          ...prev,
+          city: ''
+        }));
+      }
+    }
 
     // Clear validation error when user starts typing
     if (validationErrors[field]) {
@@ -153,15 +185,16 @@ export default function AddStudent() {
     e.preventDefault();
     
     if (!validateForm()) {
-      setSubmitResult({
-        success: false,
-        message: "Please fix the validation errors and try again"
+      setResultDialog({
+        open: true,
+        title: 'Validation Error',
+        message: 'Please fix the validation errors and try again',
+        type: 'error'
       });
       return;
     }
 
     setSubmitting(true);
-    setSubmitResult(null);
 
     try {
       // Prepare data for backend
@@ -189,17 +222,19 @@ export default function AddStudent() {
         country: studentForm.country.trim()
       };
 
-      // Backend API call
-      const response = await api.post('http://localhost:5199/Students', studentData, {
+  // Backend API call
+  const response = await api.post(`${import.meta.env.VITE_API_URL}/Students`, studentData, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
 
-      setSubmitResult({
-        success: true,
-        message: "Student added successfully!"
+      setResultDialog({
+        open: true,
+        title: 'Success',
+        message: 'Student added successfully!',
+        type: 'success'
       });
 
       // Reset form on success
@@ -228,9 +263,11 @@ export default function AddStudent() {
 
     } catch (error: any) {
       console.error('Submit error:', error);
-      setSubmitResult({
-        success: false,
-        message: error.response?.data?.message || "Failed to add student. Please try again."
+      setResultDialog({
+        open: true,
+        title: 'Add Failed',
+        message: error.response?.data?.message || 'Failed to add student. Please try again.',
+        type: 'error'
       });
     } finally {
       setSubmitting(false);
@@ -315,13 +352,16 @@ export default function AddStudent() {
               <Label htmlFor="grade" className="text-sm font-medium text-gray-700">
                 Grade <span className="text-red-500">*</span>
               </Label>
-              <Select value={studentForm.grade} onValueChange={(value) => handleInputChange("grade", value)}>
+              <Select value={studentForm.grade} onValueChange={(value) => {
+                handleInputChange("grade", value);
+                handleInputChange("section", ""); // Reset section when grade changes
+              }}>
                 <SelectTrigger className={validationErrors.grade ? 'border-red-500' : 'border-gray-300'}>
                   <SelectValue placeholder="Select grade" />
                 </SelectTrigger>
                 <SelectContent>
-                  {["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"].map(grade => (
-                    <SelectItem key={grade} value={grade}>Grade {grade}</SelectItem>
+                  {[...new Set(masterDataClasses.map(cls => cls.grade))].map(grade => (
+                    <SelectItem key={grade} value={grade}>{grade}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -330,7 +370,30 @@ export default function AddStudent() {
               )}
             </div>
 
-            {renderFormField("Section", "section")}
+            <div className="space-y-2">
+              <Label htmlFor="section" className="text-sm font-medium text-gray-700">
+                Section <span className="text-red-500">*</span>
+              </Label>
+              <Select
+                value={studentForm.section}
+                onValueChange={(value) => handleInputChange("section", value)}
+                disabled={!studentForm.grade}
+              >
+                <SelectTrigger className={validationErrors.section ? 'border-red-500' : 'border-gray-300'}>
+                  <SelectValue placeholder={studentForm.grade ? "Select section" : "Select grade first"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {masterDataClasses
+                    .filter(cls => String(cls.grade) === studentForm.grade)
+                    .map(cls => (
+                      <SelectItem key={cls.section} value={cls.section}>{cls.section}</SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              {validationErrors.section && (
+                <p className="text-sm text-red-600">{validationErrors.section}</p>
+              )}
+            </div>
 
             <div className="space-y-2">
               <Label htmlFor="status" className="text-sm font-medium text-gray-700">
@@ -374,8 +437,51 @@ export default function AddStudent() {
           <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {renderFormField("Address Line 1", "addressLine1")}
             {renderFormField("Address Line 2", "addressLine2")}
-            {renderFormField("City", "city")}
-            {renderFormField("State", "state")}
+            
+            {/* State Dropdown */}
+            <div className="space-y-2">
+              <Label htmlFor="state" className="text-sm font-medium text-gray-700">
+                State <span className="text-red-500">*</span>
+              </Label>
+              <Select value={studentForm.state} onValueChange={(value) => handleInputChange("state", value)}>
+                <SelectTrigger className={`${validationErrors.state ? 'border-red-500 focus:border-red-500' : 'border-gray-300 focus:border-blue-500'}`}>
+                  <SelectValue placeholder="Select state" />
+                </SelectTrigger>
+                <SelectContent>
+                  {getAllStates().map((state) => (
+                    <SelectItem key={state} value={state}>
+                      {state}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {validationErrors.state && (
+                <p className="text-sm text-red-600">{validationErrors.state}</p>
+              )}
+            </div>
+
+            {/* City Dropdown */}
+            <div className="space-y-2">
+              <Label htmlFor="city" className="text-sm font-medium text-gray-700">
+                City <span className="text-red-500">*</span>
+              </Label>
+              <Select value={studentForm.city} onValueChange={(value) => handleInputChange("city", value)}>
+                <SelectTrigger className={`${validationErrors.city ? 'border-red-500 focus:border-red-500' : 'border-gray-300 focus:border-blue-500'}`}>
+                  <SelectValue placeholder="Select city" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableCities.map((city) => (
+                    <SelectItem key={city} value={city}>
+                      {city}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {validationErrors.city && (
+                <p className="text-sm text-red-600">{validationErrors.city}</p>
+              )}
+            </div>
+
             {renderFormField("Zip Code", "zipCode")}
             {renderFormField("Country", "country")}
           </CardContent>
@@ -410,7 +516,6 @@ export default function AddStudent() {
                 country: "India"
               });
               setValidationErrors({});
-              setSubmitResult(null);
             }}
           >
             Clear Form
@@ -426,21 +531,27 @@ export default function AddStudent() {
         </div>
       </form>
 
-      {/* Submit Result */}
-      {submitResult && (
-        <Alert className={submitResult.success ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}>
-          <div className="flex items-center gap-2">
-            {submitResult.success ? (
-              <CheckCircle className="h-4 w-4 text-green-600" />
-            ) : (
-              <AlertCircle className="h-4 w-4 text-red-600" />
-            )}
-            <AlertDescription className={submitResult.success ? "text-green-800" : "text-red-800"}>
-              {submitResult.message}
-            </AlertDescription>
+      {/* Result Dialog */}
+      <Dialog open={resultDialog.open} onOpenChange={(open) => setResultDialog(prev => ({ ...prev, open }))}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className={resultDialog.type === 'error' ? 'text-red-600' : 'text-green-600'}>
+              {resultDialog.title}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600 mt-2">
+            {resultDialog.message}
+          </p>
+          <div className="flex justify-end mt-4">
+            <Button
+              variant="outline"
+              onClick={() => setResultDialog(prev => ({ ...prev, open: false }))}
+            >
+              OK
+            </Button>
           </div>
-        </Alert>
-      )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

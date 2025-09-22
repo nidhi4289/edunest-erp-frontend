@@ -8,6 +8,8 @@ import { UserPlus, Save, AlertCircle, CheckCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { api } from "@/services/api";
 import { useAuth } from "@/context/AuthContext";
+import { toProperCase } from "@/lib/utils";
+import { getAllStates, getCitiesByState } from "@/config/locationConfig";
 
 interface StaffForm {
   staffId: string;
@@ -21,7 +23,6 @@ interface StaffForm {
   phone: string;
   role: string;
   joiningDate: string;
-  exitDate: string;
   status: string;
   addressLine1: string;
   addressLine2: string;
@@ -45,6 +46,9 @@ export default function AddStaff() {
   const [submitting, setSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState<SubmitResult | null>(null);
   const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
+  
+  // Location management
+  const [availableCities, setAvailableCities] = useState<string[]>([]);
 
   const [staffForm, setStaffForm] = useState<StaffForm>({
     staffId: "",
@@ -58,7 +62,6 @@ export default function AddStaff() {
     phone: "",
     role: "",
     joiningDate: "",
-    exitDate: "",
     status: "Active",
     addressLine1: "",
     addressLine2: "",
@@ -94,10 +97,29 @@ export default function AddStaff() {
   }, [staffForm.firstName, staffForm.lastName, staffForm.dob]);
 
   const handleInputChange = (field: keyof StaffForm, value: string) => {
+    // List of fields that should have proper case formatting
+    const nameFields = ['firstName', 'middleName', 'lastName', 'fatherName', 'motherName', 'spouseName', 'city', 'state', 'country'];
+    
+    // Apply proper case conversion for name fields
+    const processedValue = nameFields.includes(field) ? toProperCase(value) : value;
+    
     setStaffForm(prev => ({
       ...prev,
-      [field]: value
+      [field]: processedValue
     }));
+
+    // Handle state selection - update available cities
+    if (field === 'state') {
+      const cities = getCitiesByState(processedValue);
+      setAvailableCities(cities);
+      // Reset city if it's not available in the new state
+      if (staffForm.city && !cities.includes(staffForm.city)) {
+        setStaffForm(prev => ({
+          ...prev,
+          city: ''
+        }));
+      }
+    }
 
     if (validationErrors[field]) {
       setValidationErrors(prev => ({
@@ -152,13 +174,6 @@ export default function AddStaff() {
         errors.joiningDate = "Joining date must be after date of birth";
       }
     }
-    if (staffForm.exitDate && staffForm.joiningDate) {
-      const exitDate = new Date(staffForm.exitDate);
-      const joinDate = new Date(staffForm.joiningDate);
-      if (exitDate <= joinDate) {
-        errors.exitDate = "Exit date must be after joining date";
-      }
-    }
 
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
@@ -179,30 +194,34 @@ export default function AddStaff() {
     setSubmitResult(null);
 
     try {
+      // Prepare data for backend
+      const now = new Date();
+      const toISOStringOrNull = (val: string) => val ? new Date(val).toISOString() : null;
       const staffData = {
-        staff_id: staffForm.staffId.trim(),
-        first_name: staffForm.firstName.trim(),
-        middle_name: staffForm.middleName.trim(),
-        last_name: staffForm.lastName.trim(),
+        id: "3fa85f64-5717-4562-b3fc-2c963f66afa6", // You may want to generate a real UUID here
+        staffId: staffForm.staffId.trim(),
+        firstName: staffForm.firstName.trim(),
+        lastName: staffForm.lastName.trim(),
+        middleName: staffForm.middleName.trim(),
         gender: staffForm.gender,
-        dob: staffForm.dob,
-        personal_email: staffForm.personalEmail.trim(),
-        official_email: staffForm.officialEmail.trim(),
+        dob: toISOStringOrNull(staffForm.dob),
+        personalEmail: staffForm.personalEmail.trim(),
+        officialEmail: staffForm.officialEmail.trim(),
         phone: staffForm.phone.trim(),
         role: staffForm.role.trim(),
-        joining_date: staffForm.joiningDate,
-        exit_date: staffForm.exitDate || null,
+        joiningDate: toISOStringOrNull(staffForm.joiningDate),
         status: staffForm.status,
-        address_line1: staffForm.addressLine1.trim(),
-        address_line2: staffForm.addressLine2.trim(),
+        addressLine1: staffForm.addressLine1.trim(),
+        addressLine2: staffForm.addressLine2.trim(),
         city: staffForm.city.trim(),
         state: staffForm.state.trim(),
         zip: staffForm.zip.trim(),
-        country: staffForm.country.trim()
+        country: staffForm.country.trim(),
+        createdAt: now.toISOString()
       };
 
-      // Backend API call (adjust endpoint as needed)
-      const response = await api.post('http://localhost:5199/Staff', staffData, {
+      // Backend API call
+  const response = await api.post(`${import.meta.env.VITE_API_URL}/api/Staff`, staffData, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -226,7 +245,6 @@ export default function AddStaff() {
         phone: "",
         role: "",
         joiningDate: "",
-        exitDate: "",
         status: "Active",
         addressLine1: "",
         addressLine2: "",
@@ -297,10 +315,23 @@ export default function AddStaff() {
             <CardTitle className="text-lg font-semibold text-gray-800">Personal Information</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {renderFormField("Staff ID", "staffId", "text", true, undefined, true)}
             {renderFormField("First Name", "firstName")}
             {renderFormField("Middle Name", "middleName", "text", false)}
             {renderFormField("Last Name", "lastName")}
+            {/* Staff ID field moved to the end, no * sign, greyed out */}
+            <div className="space-y-2">
+              <Label htmlFor="staffId" className="text-sm font-medium text-gray-700">
+                Staff ID
+              </Label>
+              <Input
+                id="staffId"
+                type="text"
+                value={staffForm.staffId}
+                readOnly
+                className="bg-gray-100 cursor-not-allowed border-gray-300 focus:border-gray-300"
+                placeholder="Auto-generated"
+              />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="gender" className="text-sm font-medium text-gray-700">
                 Gender
@@ -329,12 +360,28 @@ export default function AddStaff() {
             <CardTitle className="text-lg font-semibold text-gray-800">Contact & Professional Information</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {renderFormField("Personal Email", "personalEmail", "email")}
             {renderFormField("Official Email", "officialEmail", "email")}
             {renderFormField("Phone", "phone", "tel")}
-            {renderFormField("Role", "role")}
+            {renderFormField("Personal Email", "personalEmail", "email", false)}
+            <div className="space-y-2">
+              <Label htmlFor="role" className="text-sm font-medium text-gray-700">
+                Role <span className="text-red-500">*</span>
+              </Label>
+              <Select value={staffForm.role} onValueChange={(value) => handleInputChange("role", value)}>
+                <SelectTrigger className={validationErrors.role ? 'border-red-500' : 'border-gray-300'}>
+                  <SelectValue placeholder="Select role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Teacher">Teacher</SelectItem>
+                  <SelectItem value="Admin">Admin</SelectItem>
+                  <SelectItem value="Principal">Principal</SelectItem>
+                </SelectContent>
+              </Select>
+              {validationErrors.role && (
+                <p className="text-sm text-red-600">{validationErrors.role}</p>
+              )}
+            </div>
             {renderFormField("Joining Date", "joiningDate", "date")}
-            {renderFormField("Exit Date", "exitDate", "date", false)}
             <div className="space-y-2">
               <Label htmlFor="status" className="text-sm font-medium text-gray-700">
                 Status <span className="text-red-500">*</span>
@@ -364,8 +411,51 @@ export default function AddStaff() {
           <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {renderFormField("Address Line 1", "addressLine1")}
             {renderFormField("Address Line 2", "addressLine2", "text", false)}
-            {renderFormField("City", "city")}
-            {renderFormField("State", "state")}
+            
+            {/* State Dropdown */}
+            <div className="space-y-2">
+              <Label htmlFor="state" className="text-sm font-medium text-gray-700">
+                State <span className="text-red-500">*</span>
+              </Label>
+              <Select value={staffForm.state} onValueChange={(value) => handleInputChange("state", value)}>
+                <SelectTrigger className={`${validationErrors.state ? 'border-red-500 focus:border-red-500' : 'border-gray-300 focus:border-blue-500'}`}>
+                  <SelectValue placeholder="Select state" />
+                </SelectTrigger>
+                <SelectContent>
+                  {getAllStates().map((state) => (
+                    <SelectItem key={state} value={state}>
+                      {state}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {validationErrors.state && (
+                <p className="text-sm text-red-600">{validationErrors.state}</p>
+              )}
+            </div>
+
+            {/* City Dropdown */}
+            <div className="space-y-2">
+              <Label htmlFor="city" className="text-sm font-medium text-gray-700">
+                City <span className="text-red-500">*</span>
+              </Label>
+              <Select value={staffForm.city} onValueChange={(value) => handleInputChange("city", value)}>
+                <SelectTrigger className={`${validationErrors.city ? 'border-red-500 focus:border-red-500' : 'border-gray-300 focus:border-blue-500'}`}>
+                  <SelectValue placeholder="Select city" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableCities.map((city) => (
+                    <SelectItem key={city} value={city}>
+                      {city}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {validationErrors.city && (
+                <p className="text-sm text-red-600">{validationErrors.city}</p>
+              )}
+            </div>
+
             {renderFormField("Zip", "zip")}
             {renderFormField("Country", "country")}
           </CardContent>
@@ -389,7 +479,6 @@ export default function AddStaff() {
                 phone: "",
                 role: "",
                 joiningDate: "",
-                exitDate: "",
                 status: "Active",
                 addressLine1: "",
                 addressLine2: "",

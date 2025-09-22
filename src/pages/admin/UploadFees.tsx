@@ -256,8 +256,8 @@ export default function UploadFees() {
         section: String(fees.section) 
       }));
 
-      // Backend API call
-      const response = await api.post('http://localhost:5199/api/Fees/bulk', feesForBackend, {
+  // Backend API call
+  const response = await api.post(`${import.meta.env.VITE_API_URL}/api/Fees/bulk`, feesForBackend, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'

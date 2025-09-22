@@ -130,7 +130,7 @@ export default function StudentDetails() {
       if (!selectedStudent) return;
       setAttendanceLoading(true);
       try {
-        const res = await fetch(`http://localhost:5199/api/Attendance/student?eduNestId=${encodeURIComponent(selectedStudent.eduNestId)}&grade=${encodeURIComponent(selectedStudent.grade)}&section=${encodeURIComponent(selectedStudent.section)}`,
+  const res = await fetch(`${import.meta.env.VITE_API_URL}/api/Attendance/student?eduNestId=${encodeURIComponent(selectedStudent.eduNestId)}&grade=${encodeURIComponent(selectedStudent.grade)}&section=${encodeURIComponent(selectedStudent.section)}`,
           {
             headers: {
               'Authorization': `Bearer ${token}`,
@@ -162,7 +162,7 @@ export default function StudentDetails() {
       if (!selectedStudent) return;
       setAttendanceLoading(true);
       try {
-        const res = await fetch(`http://localhost:5199/api/Attendance/student?eduNestId=${encodeURIComponent(selectedStudent.eduNestId)}&grade=${encodeURIComponent(selectedStudent.grade)}&section=${encodeURIComponent(selectedStudent.section)}`,
+  const res = await fetch(`${import.meta.env.VITE_API_URL}/api/Attendance/student?eduNestId=${encodeURIComponent(selectedStudent.eduNestId)}&grade=${encodeURIComponent(selectedStudent.grade)}&section=${encodeURIComponent(selectedStudent.section)}`,
           {
             headers: {
               'Authorization': `Bearer ${token}`,
@@ -193,7 +193,7 @@ export default function StudentDetails() {
       if (!selectedStudent) return;
       setAttendanceLoading(true);
       try {
-        const res = await fetch(`http://localhost:5199/api/Attendance/student?eduNestId=${encodeURIComponent(selectedStudent.eduNestId)}&grade=${encodeURIComponent(selectedStudent.grade)}&section=${encodeURIComponent(selectedStudent.section)}`,
+  const res = await fetch(`${import.meta.env.VITE_API_URL}/api/Attendance/student?eduNestId=${encodeURIComponent(selectedStudent.eduNestId)}&grade=${encodeURIComponent(selectedStudent.grade)}&section=${encodeURIComponent(selectedStudent.section)}`,
           {
             headers: {
               'Authorization': `Bearer ${token}`,
@@ -310,11 +310,11 @@ export default function StudentDetails() {
       pdf.setTextColor(255, 255, 255);
       pdf.setFontSize(24);
       pdf.setFont('helvetica', 'bold');
-      pdf.text('EduNest School', pageWidth / 2, 12, { align: 'center' });
+      pdf.text(import.meta.env.VITE_SCHOOL_NAME || 'EduNest School', pageWidth / 2, 12, { align: 'center' });
       pdf.setFontSize(10);
       pdf.setFont('helvetica', 'normal');
-      pdf.text('Academic Excellence • Character Development • Future Leaders', pageWidth / 2, 18, { align: 'center' });
-      pdf.text('123 Education Street, Knowledge City, State 12345 | Phone: (555) 123-4567', pageWidth / 2, 22, { align: 'center' });
+      pdf.text(import.meta.env.VITE_SCHOOL_TAGLINE || 'Academic Excellence • Character Development • Future Leaders', pageWidth / 2, 18, { align: 'center' });
+      pdf.text(`${import.meta.env.VITE_SCHOOL_ADDRESS || '123 Education Street, Knowledge City, State 12345'} | Phone: ${import.meta.env.VITE_SCHOOL_PHONE || '(555) 123-4567'}`, pageWidth / 2, 22, { align: 'center' });
       pdf.setTextColor(0, 0, 0);
       yPosition = 35;
       pdf.setFontSize(20);
@@ -434,7 +434,7 @@ export default function StudentDetails() {
       yPosition += 30;
       pdf.setFontSize(8);
       pdf.setTextColor(128, 128, 128);
-      const footerText = `Report generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} | EduNest School Management System`;
+      const footerText = `Report generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} | ${import.meta.env.VITE_SCHOOL_SYSTEM_NAME || 'EduNest School Management System'}`;
       pdf.text(footerText, pageWidth / 2, pageHeight - 10, { align: 'center' });
       const fileName = `${selectedStudent.firstName}_${selectedStudent.lastName}_${pendingMarksheet.term.replace(/\s+/g, '_')}_${pendingMarksheet.academicYear.replace('/', '-')}_ReportCard.pdf`;
       pdf.save(fileName);
@@ -456,7 +456,7 @@ export default function StudentDetails() {
       if (searchCriteria.firstName) params.append("firstName", searchCriteria.firstName);
       if (searchCriteria.lastName) params.append("lastName", searchCriteria.lastName);
       if (searchCriteria.grade) params.append("grade", searchCriteria.grade);
-      const response = await axios.get(`http://localhost:5199/Students?${params.toString()}`,
+  const response = await axios.get(`${import.meta.env.VITE_API_URL}/Students?${params.toString()}`,
         token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
       );
       // The backend returns an array of students
@@ -482,7 +482,7 @@ export default function StudentDetails() {
       setAssessments([]);
       if (student.eduNestId && selectedAcademicYear) {
         setMarksLoading(true);
-        const res = await fetch(`http://localhost:5199/api/StudentMarks/student?eduNestId=${encodeURIComponent(student.eduNestId)}&academicYear=${encodeURIComponent(selectedAcademicYear)}`, {
+  const res = await fetch(`${import.meta.env.VITE_API_URL}/api/StudentMarks/student?eduNestId=${encodeURIComponent(student.eduNestId)}&academicYear=${encodeURIComponent(selectedAcademicYear)}`, {
           headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
         });
         if (res.ok) {
@@ -523,7 +523,7 @@ export default function StudentDetails() {
       (async () => {
         setMarksLoading(true);
         try {
-          const res = await fetch(`http://localhost:5199/api/StudentMarks/student?eduNestId=${encodeURIComponent(selectedStudent.eduNestId)}&academicYear=${encodeURIComponent(selectedAcademicYear)}`, {
+          const res = await fetch(`${import.meta.env.VITE_API_URL}/api/StudentMarks/student?eduNestId=${encodeURIComponent(selectedStudent.eduNestId)}&academicYear=${encodeURIComponent(selectedAcademicYear)}`, {
             headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
           });
           if (res.ok) {
