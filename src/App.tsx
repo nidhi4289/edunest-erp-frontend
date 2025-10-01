@@ -12,7 +12,7 @@ import FirstReset from "./pages/FirstReset";
 import AddStudent from "./pages/admin/AddStudent";
 import AddBulkStudents from "./pages/admin/AddBulkStudents";
 import UpdateStudent from "./pages/admin/UpdateStudent";
-import UploadFees from "./pages/admin/UploadFees";
+import UploadBulkFees from "./pages/accounts/UploadBulkFees";
 import ManageComms from "./pages/admin/ManageComms";
 import AddStaff from "./pages/admin/AddStaff";
 import ManageStaff from "./pages/admin/ManageStaff";
@@ -55,7 +55,7 @@ export default function App() {
             <Route path="admin/add-student" element={<AddStudent />} />
             <Route path="admin/bulk-add-students" element={<AddBulkStudents />} />
             <Route path="admin/update-student" element={<UpdateStudent />} />
-            <Route path="admin/upload-fees" element={<UploadFees />} />
+            <Route path="accounts/upload-fees" element={<UploadBulkFees />} />
             <Route path="admin/comms" element={<ManageComms />} />
             <Route path="admin/add-staff" element={<AddStaff />} />
             <Route path="admin/manage-staff" element={<ManageStaff />} />

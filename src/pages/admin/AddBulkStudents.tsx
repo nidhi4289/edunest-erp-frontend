@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,44 @@ const toCamelCase = (text: string): string => {
     })
     .join('');
 };
+
+// Helper function to validate alphabetic names (allows spaces, hyphens, apostrophes)
+const isValidName = (name: string): boolean => {
+  if (!name || typeof name !== 'string') return false;
+  // Allow letters, spaces, hyphens, and apostrophes (for names like O'Connor, Mary-Jane)
+  const nameRegex = /^[a-zA-Z\s'-]+$/;
+  return nameRegex.test(name.trim()) && name.trim().length > 0;
+};
+
+// Helper function to validate grade/section against actual master data
+const isValidGradeSection = (value: string, validValues: string[]): boolean => {
+  if (!value || typeof value !== 'string') return false;
+  return validValues.includes(value.trim());
+};
+
+// Helper function to validate email format
+const isValidEmail = (email: string): boolean => {
+  if (!email || typeof email !== 'string') return false;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email.trim());
+};
+
+// Helper function to clean numeric fields (remove leading zeros but keep the value)
+const cleanNumericField = (value: any): string => {
+  if (!value) return '';
+  const stringValue = String(value).trim();
+  // Remove leading zeros but keep at least one digit
+  return stringValue.replace(/^0+(?=\d)/, '') || '0';
+};
+
+interface ClassData {
+  id: string;
+  grade: string;
+  section: string;
+  name: string;
+  subjects?: any[];
+  subjectIds?: string[];
+}
 
 interface StudentData {
   firstName: string;
@@ -63,14 +101,25 @@ export default function AddBulkStudents() {
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [previewData, setPreviewData] = useState<StudentData[]>([]);
   const [showPreview, setShowPreview] = useState(false);
-  const { token } = useAuth();
+  const { token, masterDataClasses } = useAuth();
+
+  // Get valid grades and sections from master data
+  const validGrades = [...new Set(masterDataClasses.map(cls => String(cls.grade)))];
+  const validSections = [...new Set(masterDataClasses.map(cls => String(cls.section)))];
+  
+  // Function to validate if a grade-section combination exists
+  const isValidGradeSectionCombination = (grade: string, section: string): boolean => {
+    return masterDataClasses.some(cls => 
+      String(cls.grade) === String(grade) && String(cls.section) === String(section)
+    );
+  };
 
   // Sample data for the Excel template
   const sampleData: StudentData[] = [
     {
       firstName: "Duggu",
       lastName: "Sharma",
-      dateOfBirth: "2015-08-31",
+      dateOfBirth: "31-08-2015",
       fatherName: "Pratap Sharma",
       fatherEmail: "abc@gh.lkj",
       motherName: "Meenu Sharma",
@@ -78,10 +127,10 @@ export default function AddBulkStudents() {
       grade: "7",
       section: "A",
       status: "Active",
-      admissionNumber: "1123456780",
+      admissionNumber: "123456780",
       phoneNumber: "8826987650",
       secondaryPhoneNumber: "",
-      email: "abc@gh.lkj",
+      email: "student1@example.com",
       addressLine1: "MJ 44",
       addressLine2: "Jawahar",
       city: "Ratlam",
@@ -92,7 +141,7 @@ export default function AddBulkStudents() {
     {
       firstName: "Rahul",
       lastName: "Patel",
-      dateOfBirth: "2014-12-15",
+      dateOfBirth: "15-12-2014",
       fatherName: "Suresh Patel",
       fatherEmail: "suresh@example.com",
       motherName: "Priya Patel",
@@ -100,7 +149,7 @@ export default function AddBulkStudents() {
       grade: "7",
       section: "B",
       status: "Active",
-      admissionNumber: "1123456781",
+      admissionNumber: "123456781",
       phoneNumber: "9876543210",
       secondaryPhoneNumber: "9876543211",
       email: "rahul@example.com",
@@ -123,7 +172,7 @@ export default function AddBulkStudents() {
       [
         "firstName",
         "lastName",
-        "dateOfBirth (YYYY-MM-DD)",
+        "dateOfBirth (DD-MM-YYYY)",
         "fatherName",
         "fatherEmail",
         "motherName",
@@ -211,14 +260,20 @@ export default function AddBulkStudents() {
     worksheet['!comments'].push({
       ref: 'C1',
       a: 'System',
-      t: 'IMPORTANT: Keep date format as YYYY-MM-DD (e.g., 2015-08-31). Do not let Excel change this format!'
+      t: 'IMPORTANT: Keep date format as DD-MM-YYYY (e.g., 31-08-2015). Do not let Excel change this format!'
     });
 
     // Add worksheet to workbook
     XLSX.utils.book_append_sheet(workbook, worksheet, "Students");
     
+    // Generate filename with current date and time
+    const now = new Date();
+    const dateString = now.toISOString().slice(0, 10); // YYYY-MM-DD
+    const timeString = now.toTimeString().slice(0, 8).replace(/:/g, '-'); // HH-MM-SS
+    const filename = `student_upload_template_${dateString}_${timeString}.xlsx`;
+    
     // Generate Excel file and download
-    XLSX.writeFile(workbook, "student_upload_template.xlsx");
+    XLSX.writeFile(workbook, filename);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -252,18 +307,18 @@ export default function AddBulkStudents() {
             fatherEmail: row[4] || '',
             motherName: toProperCase(row[5] || ''),
             motherEmail: row[6] || '',
-            grade: row[7] || '',
-            section: row[8] || '',
+            grade: String(row[7] || ''),
+            section: String(row[8] || ''),
             status: row[9] || 'Active',
-            admissionNumber: row[10] || '',
-            phoneNumber: row[11] || '',
-            secondaryPhoneNumber: row[12] || '',
+            admissionNumber: cleanNumericField(row[10]),
+            phoneNumber: cleanNumericField(row[11]),
+            secondaryPhoneNumber: cleanNumericField(row[12]),
             email: row[13] || '',
             addressLine1: row[14] || '',
             addressLine2: row[15] || '',
             city: toProperCase(row[16] || ''),
             state: toProperCase(row[17] || ''),
-            zipCode: row[18] || '',
+            zipCode: cleanNumericField(row[18]),
             country: toProperCase(row[19] || 'India')
           }));
         
@@ -304,18 +359,86 @@ export default function AddBulkStudents() {
       // Validate data before upload
       const errors: string[] = [];
       previewData.forEach((student, index) => {
-        if (!student.firstName || !student.lastName) {
-          errors.push(`Row ${index + 2}: First name and last name are required`);
+        const rowNumber = index + 2; // +2 because index starts at 0 and we skip header row
+        
+        // Mandatory field validation
+        if (!student.firstName || !student.firstName.trim()) {
+          errors.push(`Row ${rowNumber}: First name is required`);
+        } else if (!isValidName(student.firstName)) {
+          errors.push(`Row ${rowNumber}: First name should contain only alphabets, spaces, hyphens, and apostrophes`);
         }
-        if (!student.admissionNumber) {
-          errors.push(`Row ${index + 2}: Admission number is required`);
+        
+        if (!student.lastName || !student.lastName.trim()) {
+          errors.push(`Row ${rowNumber}: Last name is required`);
+        } else if (!isValidName(student.lastName)) {
+          errors.push(`Row ${rowNumber}: Last name should contain only alphabets, spaces, hyphens, and apostrophes`);
         }
-        if (!student.grade) {
-          errors.push(`Row ${index + 2}: Grade is required`);
+        
+        if (!student.fatherName || !student.fatherName.trim()) {
+          errors.push(`Row ${rowNumber}: Father name is required`);
+        } else if (!isValidName(student.fatherName)) {
+          errors.push(`Row ${rowNumber}: Father name should contain only alphabets, spaces, hyphens, and apostrophes`);
         }
-        // Enhanced date validation - check if date was successfully parsed
-        if (student.dateOfBirth && !isValidDate(student.dateOfBirth)) {
-          errors.push(`Row ${index + 2}: Invalid or unparseable date of birth. Use YYYY-MM-DD format`);
+        
+        if (!student.motherName || !student.motherName.trim()) {
+          errors.push(`Row ${rowNumber}: Mother name is required`);
+        } else if (!isValidName(student.motherName)) {
+          errors.push(`Row ${rowNumber}: Mother name should contain only alphabets, spaces, hyphens, and apostrophes`);
+        }
+        
+        // Date of birth validation
+        if (!student.dateOfBirth || !student.dateOfBirth.trim()) {
+          errors.push(`Row ${rowNumber}: Date of birth is required`);
+        } else if (!isValidDate(student.dateOfBirth)) {
+          errors.push(`Row ${rowNumber}: Invalid date of birth. Use DD-MM-YYYY format (e.g., 31-08-2015)`);
+        }
+        
+        // Grade validation
+        if (!student.grade || !student.grade.trim()) {
+          errors.push(`Row ${rowNumber}: Grade is required`);
+        } else if (!isValidGradeSection(student.grade, validGrades)) {
+          errors.push(`Row ${rowNumber}: Grade "${student.grade}" is not a valid grade. Valid grades are: ${validGrades.join(', ')}`);
+        }
+        
+        // Section validation
+        if (!student.section || !student.section.trim()) {
+          errors.push(`Row ${rowNumber}: Section is required`);
+        } else if (!isValidGradeSection(student.section, validSections)) {
+          errors.push(`Row ${rowNumber}: Section "${student.section}" is not a valid section. Valid sections are: ${validSections.join(', ')}`);
+        }
+        
+        // Grade-Section combination validation
+        if (student.grade && student.section && 
+            isValidGradeSection(student.grade, validGrades) && 
+            isValidGradeSection(student.section, validSections)) {
+          if (!isValidGradeSectionCombination(student.grade, student.section)) {
+            errors.push(`Row ${rowNumber}: Grade "${student.grade}" and Section "${student.section}" combination does not exist in the system`);
+          }
+        }
+        
+        // Admission number validation
+        if (!student.admissionNumber || !student.admissionNumber.trim()) {
+          errors.push(`Row ${rowNumber}: Admission number is required`);
+        }
+        
+        // Email validation (if provided)
+        if (student.email && student.email.trim() && !isValidEmail(student.email)) {
+          errors.push(`Row ${rowNumber}: Invalid email format for student email`);
+        }
+        
+        // Father email validation (if provided)
+        if (student.fatherEmail && student.fatherEmail.trim() && !isValidEmail(student.fatherEmail)) {
+          errors.push(`Row ${rowNumber}: Invalid email format for father email`);
+        }
+        
+        // Mother email validation (if provided)
+        if (student.motherEmail && student.motherEmail.trim() && !isValidEmail(student.motherEmail)) {
+          errors.push(`Row ${rowNumber}: Invalid email format for mother email`);
+        }
+        
+        // City validation (if provided)
+        if (student.city && !isValidName(student.city)) {
+          errors.push(`Row ${rowNumber}: City name should contain only alphabets, spaces, hyphens, and apostrophes`);
         }
       });
 
@@ -331,26 +454,31 @@ export default function AddBulkStudents() {
       // Prepare data for backend - add eduNestId and format dates
       const studentsForBackend = previewData.map(student => ({
         eduNestId: "", // Backend will generate this
-        firstName: toCamelCase(student.firstName),
-        lastName: toCamelCase(student.lastName),
-        dateOfBirth: student.dateOfBirth ? new Date(student.dateOfBirth).toISOString() : null,
-        fatherName: toCamelCase(student.fatherName),
-        fatherEmail: student.fatherEmail,
-        motherName: toCamelCase(student.motherName),
-        motherEmail: student.motherEmail,
-        grade: typeof student.grade === 'number' ? String(student.grade) : (student.grade ?? '').toString(),
-        section: student.section,
-        status: student.status,
-        admissionNumber: student.admissionNumber,
-        phoneNumber: student.phoneNumber,
-        secondaryPhoneNumber: student.secondaryPhoneNumber,
-        email: student.email,
-        addressLine1: student.addressLine1,
-        addressLine2: student.addressLine2,
-        city: toCamelCase(student.city),
-        state: student.state,
-        zipCode: student.zipCode,
-        country: student.country
+        firstName: toCamelCase(student.firstName.trim()),
+        lastName: toCamelCase(student.lastName.trim()),
+        dateOfBirth: student.dateOfBirth ? (() => {
+          const [day, month, year] = student.dateOfBirth.split('-');
+          // Create date in UTC to avoid timezone issues
+          const utcDate = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day)));
+          return utcDate.toISOString(); // Returns UTC format: YYYY-MM-DDTHH:mm:ss.sssZ
+        })() : null,
+        fatherName: toCamelCase(student.fatherName.trim()),
+        fatherEmail: student.fatherEmail ? student.fatherEmail.trim() : '',
+        motherName: toCamelCase(student.motherName.trim()),
+        motherEmail: student.motherEmail ? student.motherEmail.trim() : '',
+        grade: String(student.grade).trim(),
+        section: String(student.section).trim(),
+        status: student.status || 'Active',
+        admissionNumber: student.admissionNumber ? student.admissionNumber.trim() : '',
+        phoneNumber: student.phoneNumber ? student.phoneNumber.trim() : '',
+        secondaryPhoneNumber: student.secondaryPhoneNumber ? student.secondaryPhoneNumber.trim() : '',
+        email: student.email ? student.email.trim() : '',
+        addressLine1: student.addressLine1 ? student.addressLine1.trim() : '',
+        addressLine2: student.addressLine2 ? student.addressLine2.trim() : '',
+        city: student.city ? toCamelCase(student.city.trim()) : '',
+        state: student.state ? student.state.trim() : '',
+        zipCode: student.zipCode ? student.zipCode.trim() : '',
+        country: student.country ? student.country.trim() : 'India'
       }));
 
   // Backend API call
@@ -382,10 +510,26 @@ export default function AddBulkStudents() {
 
     } catch (error: any) {
       console.error('Upload error:', error);
+      
+      // Safely extract error information
+      const errorMessage = error.response?.data?.message || 'Upload failed. Please try again.';
+      const backendErrors = error.response?.data?.errors;
+      
+      // Ensure errors is always an array
+      let errorArray: string[] = [];
+      if (Array.isArray(backendErrors)) {
+        errorArray = backendErrors;
+      } else if (typeof backendErrors === 'string') {
+        errorArray = [backendErrors];
+      } else if (backendErrors && typeof backendErrors === 'object') {
+        // Handle case where errors might be an object
+        errorArray = Object.values(backendErrors).flat().filter(err => typeof err === 'string');
+      }
+      
       setUploadResult({
         success: false,
-        message: error.response?.data?.message || 'Upload failed. Please try again.',
-        errors: error.response?.data?.errors || []
+        message: errorMessage,
+        errors: errorArray.length > 0 ? errorArray : undefined
       });
     } finally {
       setUploading(false);
@@ -393,29 +537,36 @@ export default function AddBulkStudents() {
   };
 
   const isValidDate = (dateString: string): boolean => {
-    const regex = /^\d{4}-\d{2}-\d{2}$/;
+    const regex = /^\d{2}-\d{2}-\d{4}$/;
     if (!regex.test(dateString)) return false;
-    const date = new Date(dateString);
-    return date instanceof Date && !isNaN(date.getTime());
+    const [day, month, year] = dateString.split('-');
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    return date instanceof Date && !isNaN(date.getTime()) &&
+           date.getDate() === parseInt(day) &&
+           date.getMonth() === parseInt(month) - 1 &&
+           date.getFullYear() === parseInt(year);
   };
 
   // Enhanced date parsing function to handle multiple formats
   const parseAndFormatDate = (dateValue: any): string => {
     if (!dateValue) return '';
     
-    // If it's already a string in YYYY-MM-DD format, return as is
-    if (typeof dateValue === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+    // If it's already a string in DD-MM-YYYY format, return as is
+    if (typeof dateValue === 'string' && /^\d{2}-\d{2}-\d{4}$/.test(dateValue)) {
       return dateValue;
     }
     
-    // If it's a number (Excel serial date), convert it
+    // If it's a number (Excel serial date), convert it to DD-MM-YYYY
     if (typeof dateValue === 'number') {
       // Excel serial date starts from 1900-01-01 (serial 1)
       // JavaScript Date starts from 1970-01-01
       const excelEpoch = new Date(1900, 0, 1);
       const date = new Date(excelEpoch.getTime() + (dateValue - 1) * 24 * 60 * 60 * 1000);
       if (!isNaN(date.getTime())) {
-        return date.toISOString().split('T')[0]; // Return YYYY-MM-DD format
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        return `${day}-${month}-${year}`; // Return DD-MM-YYYY format
       }
     }
     
@@ -424,9 +575,9 @@ export default function AddBulkStudents() {
     
     // Try different date formats
     const formats = [
-      /^(\d{4})-(\d{1,2})-(\d{1,2})$/, // YYYY-MM-DD or YYYY-M-D
-      /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/, // MM/DD/YYYY or M/D/YYYY
-      /^(\d{1,2})-(\d{1,2})-(\d{4})$/, // MM-DD-YYYY or M-D-YYYY
+      /^(\d{1,2})-(\d{1,2})-(\d{4})$/, // DD-MM-YYYY or D-M-YYYY (preferred format)
+      /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/, // DD/MM/YYYY or D/M/YYYY
+      /^(\d{4})-(\d{1,2})-(\d{1,2})$/, // YYYY-MM-DD or YYYY-M-D (legacy)
       /^(\d{4})\/(\d{1,2})\/(\d{1,2})$/, // YYYY/MM/DD or YYYY/M/D
     ];
     
@@ -435,23 +586,26 @@ export default function AddBulkStudents() {
       if (match) {
         let year, month, day;
         
-        if (format === formats[0] || format === formats[3]) {
-          // YYYY-MM-DD or YYYY/MM/DD format
-          [, year, month, day] = match;
+        if (format === formats[0] || format === formats[1]) {
+          // DD-MM-YYYY or DD/MM/YYYY format (preferred)
+          [, day, month, year] = match;
         } else {
-          // MM/DD/YYYY or MM-DD-YYYY format
-          [, month, day, year] = match;
+          // YYYY-MM-DD or YYYY/MM/DD format (legacy)
+          [, year, month, day] = match;
         }
         
         // Ensure month and day are two digits
         month = month.padStart(2, '0');
         day = day.padStart(2, '0');
         
-        const formattedDate = `${year}-${month}-${day}`;
+        const formattedDate = `${day}-${month}-${year}`; // Always return DD-MM-YYYY
         
         // Validate the constructed date
-        const testDate = new Date(formattedDate);
-        if (!isNaN(testDate.getTime())) {
+        const testDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        if (!isNaN(testDate.getTime()) && 
+            testDate.getDate() === parseInt(day) &&
+            testDate.getMonth() === parseInt(month) - 1 &&
+            testDate.getFullYear() === parseInt(year)) {
           return formattedDate;
         }
       }
@@ -461,7 +615,10 @@ export default function AddBulkStudents() {
     try {
       const date = new Date(dateString);
       if (!isNaN(date.getTime())) {
-        return date.toISOString().split('T')[0];
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        return `${day}-${month}-${year}`; // Return DD-MM-YYYY format
       }
     } catch (e) {
       // Ignore error and return empty string
@@ -499,8 +656,11 @@ export default function AddBulkStudents() {
             <ol className="list-decimal list-inside space-y-1 text-blue-800">
               <li>Download the Excel template below</li>
               <li>Fill in the student information (replace sample data with real data)</li>
-              <li>Ensure all required fields are completed</li>
-              <li><strong>IMPORTANT:</strong> Keep date format as YYYY-MM-DD (e.g., 2015-08-31)</li>
+              <li><strong>MANDATORY FIELDS:</strong> First Name, Last Name, Father Name, Mother Name, Date of Birth, Grade, Section, Admission Number</li>
+              <li><strong>NAME FIELDS:</strong> Use only alphabets, spaces, hyphens (-), and apostrophes (') for names</li>
+              <li><strong>DATE FORMAT:</strong> Keep date format as DD-MM-YYYY (e.g., 31-08-2015)</li>
+              <li><strong>EMAIL FORMAT:</strong> Provide valid email addresses for student, father, and mother emails (optional)</li>
+              <li><strong>NUMERIC FIELDS:</strong> Enter phone numbers, admission numbers, and zip codes as regular numbers (leading zeros will be automatically removed)</li>
               <li>If Excel changes date format, select the date column and format it as "Text"</li>
               <li>Upload the completed Excel file</li>
               <li>Review the preview and confirm the upload</li>
@@ -511,8 +671,29 @@ export default function AddBulkStudents() {
             <h3 className="font-semibold text-amber-900 mb-2">📅 Date Format Important Note:</h3>
             <p className="text-amber-800 text-sm">
               To prevent Excel from auto-converting dates: Right-click the "dateOfBirth" column → 
-              Format Cells → Category: Text → OK. This keeps dates in YYYY-MM-DD format.
+              Format Cells → Category: Text → OK. This keeps dates in DD-MM-YYYY format.
             </p>
+          </div>
+          
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+            <h3 className="font-semibold text-blue-900 mb-2">� Email Validation:</h3>
+            <p className="text-blue-800 text-sm">
+              Email addresses for students, fathers, and mothers are optional but must be in valid format when provided (e.g., user@example.com).
+            </p>
+          </div>
+          
+          <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+            <h3 className="font-semibold text-green-900 mb-2">✅ Field Validation Rules:</h3>
+            <ul className="text-green-800 text-sm space-y-1">
+              <li><strong>Names:</strong> Only alphabets, spaces, hyphens (-), and apostrophes (') allowed</li>
+              <li><strong>Date of Birth:</strong> Must be in DD-MM-YYYY format (e.g., 31-08-2015)</li>
+              <li><strong>Grade & Section:</strong> Must match existing classes in your school system</li>
+              <li><strong>Emails:</strong> Must be valid email format when provided (optional)</li>
+              <li><strong>Numeric Fields:</strong> Leading zeros will be automatically removed from phone numbers, admission numbers, and zip codes</li>
+              <li><strong>Auto-formatting:</strong> Names and city will be converted to proper camelCase format</li>
+              <li><strong>Valid Grades:</strong> {validGrades.length > 0 ? validGrades.join(', ') : 'None configured'}</li>
+              <li><strong>Valid Sections:</strong> {validSections.length > 0 ? validSections.join(', ') : 'None configured'}</li>
+            </ul>
           </div>
           
           <div className="flex items-center gap-4">
@@ -623,7 +804,7 @@ export default function AddBulkStudents() {
             )}
             <AlertDescription className={uploadResult.success ? "text-green-800" : "text-red-800"}>
               {uploadResult.message}
-              {uploadResult.errors && (
+              {uploadResult.errors && Array.isArray(uploadResult.errors) && uploadResult.errors.length > 0 && (
                 <ul className="mt-2 list-disc list-inside">
                   {uploadResult.errors.slice(0, 5).map((error, index) => (
                     <li key={index} className="text-sm">{error}</li>

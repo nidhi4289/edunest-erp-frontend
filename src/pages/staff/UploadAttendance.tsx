@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import * as XLSX from 'xlsx';
 import { api } from "@/services/api";
+import { useAuth } from "@/context/AuthContext";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 
 interface ClassData {
@@ -53,9 +54,8 @@ export default function UploadAttendance() {
   const [attendanceMap, setAttendanceMap] = useState<Record<string, 'P' | 'A'>>( {} );
   const [submitting, setSubmitting] = useState(false);
   const [attendanceResult, setAttendanceResult] = useState<UploadResult | null>(null);
-  const [classOptions, setClassOptions] = useState<ClassData[]>([]);
-  const [loadingClasses, setLoadingClasses] = useState(false);
   const [attendanceDate, setAttendanceDate] = useState<string>("");
+  const { token, masterDataClasses } = useAuth();
 
   // Submit attendance
   const handleSubmitAttendance = async () => {
@@ -287,26 +287,10 @@ export default function UploadAttendance() {
   const [loadingTemplate, setLoadingTemplate] = useState<boolean>(false);
   const [file, setFile] = useState<File | null>(null);
 
-  // Fetch class options on mount
-  useEffect(() => {
-    const fetchClasses = async () => {
-      setLoadingClasses(true);
-      try {
-        const res = await api.get('/api/MasterData/classes');
-        setClassOptions(res.data || []);
-      } catch (err) {
-        setClassOptions([]);
-      } finally {
-        setLoadingClasses(false);
-      }
-    };
-    fetchClasses();
-  }, []);
-
-  // Get unique grades and sections from classOptions
-  const gradeOptions = Array.from(new Set(classOptions.map(c => c.grade)));
+  // Get unique grades and sections from masterDataClasses
+  const gradeOptions = Array.from(new Set(masterDataClasses.map(c => String(c.grade))));
   const sectionOptions = selectedGrade
-    ? Array.from(new Set(classOptions.filter(c => c.grade === selectedGrade).map(c => c.section)))
+    ? Array.from(new Set(masterDataClasses.filter(c => String(c.grade) === selectedGrade).map(c => String(c.section))))
     : [];
 
   // Search students by grade/section
@@ -359,7 +343,7 @@ export default function UploadAttendance() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex gap-4 mb-4">
-                <Select value={selectedGrade} onValueChange={setSelectedGrade} disabled={loadingClasses}>
+                <Select value={selectedGrade} onValueChange={setSelectedGrade}>
                   <SelectTrigger className="w-32 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
                     <SelectValue placeholder="Grade" />
                   </SelectTrigger>
@@ -369,7 +353,7 @@ export default function UploadAttendance() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={selectedSection} onValueChange={setSelectedSection} disabled={!selectedGrade || loadingClasses}>
+                <Select value={selectedSection} onValueChange={setSelectedSection} disabled={!selectedGrade}>
                   <SelectTrigger className="w-32 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
                     <SelectValue placeholder="Section" />
                   </SelectTrigger>
@@ -380,7 +364,7 @@ export default function UploadAttendance() {
                   </SelectContent>
                 </Select>
                 <Input type="date" value={attendanceDate} onChange={e => setAttendanceDate(e.target.value)} className="w-48 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700" />
-                <Button onClick={handleSearchStudents} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow" disabled={!selectedGrade || !selectedSection || loadingClasses}>Search Students</Button>
+                <Button onClick={handleSearchStudents} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow" disabled={!selectedGrade || !selectedSection}>Search Students</Button>
               </div>
               <Table className="rounded-lg overflow-hidden border border-gray-100 dark:border-gray-800">
                 <TableHeader className="bg-gray-100 dark:bg-gray-800">
@@ -438,7 +422,7 @@ export default function UploadAttendance() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex gap-4 mb-4">
-                <Select value={selectedGrade} onValueChange={setSelectedGrade} disabled={loadingClasses}>
+                <Select value={selectedGrade} onValueChange={setSelectedGrade}>
                   <SelectTrigger className="w-32 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
                     <SelectValue placeholder="Grade" />
                   </SelectTrigger>
@@ -448,7 +432,7 @@ export default function UploadAttendance() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={selectedSection} onValueChange={setSelectedSection} disabled={!selectedGrade || loadingClasses}>
+                <Select value={selectedSection} onValueChange={setSelectedSection} disabled={!selectedGrade}>
                   <SelectTrigger className="w-32 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
                     <SelectValue placeholder="Section" />
                   </SelectTrigger>

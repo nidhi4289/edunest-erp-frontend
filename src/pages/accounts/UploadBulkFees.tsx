@@ -8,6 +8,61 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import * as XLSX from 'xlsx';
 import { api } from "@/services/api";
 import { useAuth } from "@/context/AuthContext";
+import { toProperCase } from "@/lib/utils";
+
+interface ClassData {
+  id: string;
+  grade: string;
+  section: string;
+  name: string;
+  subjects?: any[];
+  subjectIds?: string[];
+}
+
+// Helper function to validate alphabetic names (allows spaces, hyphens, apostrophes)
+const isValidName = (name: string): boolean => {
+  if (!name || typeof name !== 'string') return false;
+  // Allow letters, spaces, hyphens, and apostrophes (for names like O'Connor, Mary-Jane)
+  const nameRegex = /^[a-zA-Z\s'-]+$/;
+  return nameRegex.test(name.trim()) && name.trim().length > 0;
+};
+
+// Helper function to validate email format
+const isValidEmail = (email: string): boolean => {
+  if (!email || typeof email !== 'string') return false;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email.trim());
+};
+
+// Helper function to clean numeric fields (remove leading zeros but keep the value)
+const cleanNumericField = (value: any): string => {
+  if (!value) return '';
+  const stringValue = String(value).trim();
+  // Remove leading zeros but keep at least one digit
+  return stringValue.replace(/^0+(?=\d)/, '') || '0';
+};
+
+// Helper function to validate grade/section against actual master data
+const isValidGradeSection = (value: string, validValues: string[]): boolean => {
+  if (!value || typeof value !== 'string') return false;
+  return validValues.includes(value.trim());
+};
+
+// Helper function to convert text to camel case
+const toCamelCase = (text: string): string => {
+  if (!text || typeof text !== 'string') return text;
+  
+  return text
+    .toLowerCase()
+    .split(' ')
+    .map((word, index) => {
+      if (index === 0) {
+        return word;
+      }
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join('');
+};
 
 interface FeesData {
   firstName: string;
@@ -30,13 +85,24 @@ interface UploadResult {
   errors?: string[];
 }
 
-export default function UploadFees() {
-  const { token } = useAuth();
+export default function UploadBulkFees() {
+  const { token, masterDataClasses } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [previewData, setPreviewData] = useState<FeesData[]>([]);
   const [showPreview, setShowPreview] = useState(false);
+
+  // Get valid grades and sections from master data
+  const validGrades = [...new Set(masterDataClasses.map(cls => String(cls.grade)))];
+  const validSections = [...new Set(masterDataClasses.map(cls => String(cls.section)))];
+  
+  // Function to validate if a grade-section combination exists
+  const isValidGradeSectionCombination = (grade: string, section: string): boolean => {
+    return masterDataClasses.some(cls => 
+      String(cls.grade) === String(grade) && String(cls.section) === String(section)
+    );
+  };
 
   // Sample data for the Excel template
   const sampleData: FeesData[] = [
@@ -44,7 +110,7 @@ export default function UploadFees() {
       firstName: "Shivansh",
       lastName: "Sharma",
       fatherName: "Ankit",
-      dateOfBirth: "2015-02-03",
+      dateOfBirth: "03-02-2015",
       student_edunest_id: "ST-ShivanshSharma20150204",
       fee_collected: "250",
       fee_waived: "0",
@@ -56,7 +122,7 @@ export default function UploadFees() {
       firstName: "Rahul",
       lastName: "Patel",
       fatherName: "Suresh",
-      dateOfBirth: "2014-12-15",
+      dateOfBirth: "15-12-2014",
       student_edunest_id: "ST-RahulPatel20140215",
       fee_collected: "500",
       fee_waived: "100",
@@ -68,7 +134,7 @@ export default function UploadFees() {
       firstName: "Priya",
       lastName: "Singh",
       fatherName: "Rajesh",
-      dateOfBirth: "2016-03-10",
+      dateOfBirth: "10-03-2016",
       student_edunest_id: "ST-PriyaSingh20160310",
       fee_collected: "800",
       fee_waived: "0",
@@ -89,7 +155,7 @@ export default function UploadFees() {
         "firstName",
         "lastName",
         "fatherName",
-        "dateOfBirth",
+        "dateOfBirth (DD-MM-YYYY)",
         "student_edunest_id",
         "fee_collected",
         "fee_waived",
@@ -126,14 +192,39 @@ export default function UploadFees() {
       { wch: 20 }, // waiver_reason
       { wch: 8 },  // grade
       { wch: 10 }  // section
-    ];
-    worksheet['!cols'] = columnWidths;
+    ];    worksheet['!cols'] = columnWidths;
+
+    // Format dateOfBirth column (column D, index 3) as text to prevent Excel auto-formatting
+    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1:J100');
+    for (let row = 1; row <= range.e.r; row++) {
+      const cellAddress = XLSX.utils.encode_cell({ r: row, c: 3 }); // Column D (dateOfBirth)
+      if (worksheet[cellAddress]) {
+        worksheet[cellAddress].t = 's'; // Set cell type as string/text
+        worksheet[cellAddress].z = '@'; // Set number format as text
+      }
+    }
+
+    // Add data validation and instructions as comments
+    if (!worksheet['!comments']) worksheet['!comments'] = [];
+    
+    // Add comment to dateOfBirth header cell
+    worksheet['!comments'].push({
+      ref: 'D1',
+      a: 'System',
+      t: 'IMPORTANT: Keep date format as DD-MM-YYYY (e.g., 31-08-2015). Do not let Excel change this format!'
+    });
 
     // Add worksheet to workbook
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Fees");
+    XLSX.utils.book_append_sheet(workbook, worksheet, "BulkFees");
+    
+    // Generate filename with current date and time
+    const now = new Date();
+    const dateString = now.toISOString().slice(0, 10); // YYYY-MM-DD
+    const timeString = now.toTimeString().slice(0, 8).replace(/:/g, '-'); // HH-MM-SS
+    const filename = `bulk_fees_upload_template_${dateString}_${timeString}.xlsx`;
     
     // Generate Excel file and download
-    XLSX.writeFile(workbook, "fees_upload_template.xlsx");
+    XLSX.writeFile(workbook, filename);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -160,16 +251,16 @@ export default function UploadFees() {
           .slice(1)
           .filter(row => row.length > 0 && row[0]) // Filter out empty rows
           .map((row, index) => ({
-            firstName: row[0] || '',
-            lastName: row[1] || '',
-            fatherName: row[2] || '',
-            dateOfBirth: row[3] || '',
+            firstName: toProperCase(row[0] || ''),
+            lastName: toProperCase(row[1] || ''),
+            fatherName: toProperCase(row[2] || ''),
+            dateOfBirth: parseAndFormatDate(row[3]) || '',
             student_edunest_id: row[4] || '',
-            fee_collected: row[5] || '0',
-            fee_waived: row[6] || '0',
+            fee_collected: cleanNumericField(row[5]) || '0',
+            fee_waived: cleanNumericField(row[6]) || '0',
             waiver_reason: row[7] || '',
-            grade: row[8] || '',
-            section: row[9] || ''
+            grade: String(row[8] || ''),
+            section: String(row[9] || '')
           }));
         
         setPreviewData(fees);
@@ -186,10 +277,14 @@ export default function UploadFees() {
   };
 
   const isValidDate = (dateString: string): boolean => {
-    const regex = /^\d{4}-\d{2}-\d{2}$/;
+    const regex = /^\d{2}-\d{2}-\d{4}$/;
     if (!regex.test(dateString)) return false;
-    const date = new Date(dateString);
-    return date instanceof Date && !isNaN(date.getTime());
+    const [day, month, year] = dateString.split('-');
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    return date instanceof Date && !isNaN(date.getTime()) &&
+           date.getDate() === parseInt(day) &&
+           date.getMonth() === parseInt(month) - 1 &&
+           date.getFullYear() === parseInt(year);
   };
 
   const handleUpload = async () => {
@@ -201,34 +296,67 @@ export default function UploadFees() {
       // Validate data before upload
       const errors: string[] = [];
       previewData.forEach((fees, index) => {
-        if (!fees.firstName) {
-          errors.push(`Row ${index + 2}: First name is required`);
+        const rowNumber = index + 2; // +2 because index starts at 0 and we skip header row
+        
+        if (!fees.firstName || !fees.firstName.trim()) {
+          errors.push(`Row ${rowNumber}: First name is required`);
+        } else if (!isValidName(fees.firstName)) {
+          errors.push(`Row ${rowNumber}: First name should contain only alphabets, spaces, hyphens, and apostrophes`);
         }
-        if (!fees.lastName) {
-          errors.push(`Row ${index + 2}: Last name is required`);
+        
+        if (!fees.lastName || !fees.lastName.trim()) {
+          errors.push(`Row ${rowNumber}: Last name is required`);
+        } else if (!isValidName(fees.lastName)) {
+          errors.push(`Row ${rowNumber}: Last name should contain only alphabets, spaces, hyphens, and apostrophes`);
         }
-        if (!fees.fatherName) {
-          errors.push(`Row ${index + 2}: Father name is required`);
+        
+        if (!fees.fatherName || !fees.fatherName.trim()) {
+          errors.push(`Row ${rowNumber}: Father name is required`);
+        } else if (!isValidName(fees.fatherName)) {
+          errors.push(`Row ${rowNumber}: Father name should contain only alphabets, spaces, hyphens, and apostrophes`);
         }
-        if (!fees.dateOfBirth) {
-          errors.push(`Row ${index + 2}: Date of birth is required`);
+        
+        if (!fees.dateOfBirth || !fees.dateOfBirth.trim()) {
+          errors.push(`Row ${rowNumber}: Date of birth is required`);
         } else if (!isValidDate(fees.dateOfBirth)) {
-          errors.push(`Row ${index + 2}: Date of birth must be in YYYY-MM-DD format`);
+          errors.push(`Row ${rowNumber}: Date of birth must be in DD-MM-YYYY format (e.g., 31-08-2015)`);
         }
-        if (!fees.student_edunest_id) {
-          errors.push(`Row ${index + 2}: Student EduNest ID is required`);
+        
+        if (!fees.student_edunest_id || !fees.student_edunest_id.trim()) {
+          errors.push(`Row ${rowNumber}: Student EduNest ID is required`);
         }
+        
         if (!fees.fee_collected || isNaN(Number(fees.fee_collected))) {
-          errors.push(`Row ${index + 2}: Valid fee collected amount is required`);
+          errors.push(`Row ${rowNumber}: Valid fee collected amount is required`);
+        } else if (Number(fees.fee_collected) < 0) {
+          errors.push(`Row ${rowNumber}: Fee collected amount cannot be negative`);
         }
+        
         if (fees.fee_waived && isNaN(Number(fees.fee_waived))) {
-          errors.push(`Row ${index + 2}: Fee waived must be a valid number`);
+          errors.push(`Row ${rowNumber}: Fee waived must be a valid number`);
+        } else if (fees.fee_waived && Number(fees.fee_waived) < 0) {
+          errors.push(`Row ${rowNumber}: Fee waived amount cannot be negative`);
         }
-        if (!fees.grade) {
-          errors.push(`Row ${index + 2}: Grade is required`);
+        
+        if (!fees.grade || !fees.grade.trim()) {
+          errors.push(`Row ${rowNumber}: Grade is required`);
+        } else if (!isValidGradeSection(fees.grade, validGrades)) {
+          errors.push(`Row ${rowNumber}: Grade "${fees.grade}" is not a valid grade. Valid grades are: ${validGrades.join(', ')}`);
         }
-        if (!fees.section) {
-          errors.push(`Row ${index + 2}: Section is required`);
+        
+        if (!fees.section || !fees.section.trim()) {
+          errors.push(`Row ${rowNumber}: Section is required`);
+        } else if (!isValidGradeSection(fees.section, validSections)) {
+          errors.push(`Row ${rowNumber}: Section "${fees.section}" is not a valid section. Valid sections are: ${validSections.join(', ')}`);
+        }
+        
+        // Grade-Section combination validation
+        if (fees.grade && fees.section && 
+            isValidGradeSection(fees.grade, validGrades) && 
+            isValidGradeSection(fees.section, validSections)) {
+          if (!isValidGradeSectionCombination(fees.grade, fees.section)) {
+            errors.push(`Row ${rowNumber}: Grade "${fees.grade}" and Section "${fees.section}" combination does not exist in the system`);
+          }
         }
       });
 
@@ -243,17 +371,22 @@ export default function UploadFees() {
 
       // Prepare data for backend API
       const feesForBackend = previewData.map(fees => ({
-        firstName: fees.firstName,
-        lastName: fees.lastName,
-        fatherName: fees.fatherName,
-        dateOfBirth: fees.dateOfBirth,
-        studentEduNestId: fees.student_edunest_id,
+        firstName: toCamelCase(fees.firstName.trim()),
+        lastName: toCamelCase(fees.lastName.trim()),
+        fatherName: toCamelCase(fees.fatherName.trim()),
+        dateOfBirth: fees.dateOfBirth ? (() => {
+          const [day, month, year] = fees.dateOfBirth.split('-');
+          // Create date in UTC to avoid timezone issues
+          const utcDate = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day)));
+          return utcDate.toISOString(); // Returns UTC format: YYYY-MM-DDTHH:mm:ss.sssZ
+        })() : null,
+        studentEduNestId: fees.student_edunest_id.trim(),
         dateOfCollection: new Date().toISOString(),
         feeCollected: parseFloat(fees.fee_collected),
         feeWaived: parseFloat(fees.fee_waived) || 0,
-        waiverReason: fees.waiver_reason || "",
-        grade: String(fees.grade), 
-        section: String(fees.section) 
+        waiverReason: fees.waiver_reason ? fees.waiver_reason.trim() : "",
+        grade: String(fees.grade).trim(), 
+        section: String(fees.section).trim() 
       }));
 
   // Backend API call
@@ -300,6 +433,86 @@ export default function UploadFees() {
     return isNaN(num) ? amount : `₹${num.toLocaleString()}`;
   };
 
+  // Enhanced date parsing function to handle multiple formats
+  const parseAndFormatDate = (dateValue: any): string => {
+    if (!dateValue) return '';
+    
+    // If it's already a string in DD-MM-YYYY format, return as is
+    if (typeof dateValue === 'string' && /^\d{2}-\d{2}-\d{4}$/.test(dateValue)) {
+      return dateValue;
+    }
+    
+    // If it's a number (Excel serial date), convert it to DD-MM-YYYY
+    if (typeof dateValue === 'number') {
+      // Excel serial date starts from 1900-01-01 (serial 1)
+      // JavaScript Date starts from 1970-01-01
+      const excelEpoch = new Date(1900, 0, 1);
+      const date = new Date(excelEpoch.getTime() + (dateValue - 1) * 24 * 60 * 60 * 1000);
+      if (!isNaN(date.getTime())) {
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        return `${day}-${month}-${year}`; // Return DD-MM-YYYY format
+      }
+    }
+    
+    // Try to parse as various date formats
+    const dateString = String(dateValue).trim();
+    
+    // Try different date formats
+    const formats = [
+      /^(\d{1,2})-(\d{1,2})-(\d{4})$/, // DD-MM-YYYY or D-M-YYYY (preferred format)
+      /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/, // DD/MM/YYYY or D/M/YYYY
+      /^(\d{4})-(\d{1,2})-(\d{1,2})$/, // YYYY-MM-DD or YYYY-M-D (legacy)
+      /^(\d{4})\/(\d{1,2})\/(\d{1,2})$/, // YYYY/MM/DD or YYYY/M/D
+    ];
+    
+    for (const format of formats) {
+      const match = dateString.match(format);
+      if (match) {
+        let year, month, day;
+        
+        if (format === formats[0] || format === formats[1]) {
+          // DD-MM-YYYY or DD/MM/YYYY format (preferred)
+          [, day, month, year] = match;
+        } else {
+          // YYYY-MM-DD or YYYY/MM/DD format (legacy)
+          [, year, month, day] = match;
+        }
+        
+        // Ensure month and day are two digits
+        month = month.padStart(2, '0');
+        day = day.padStart(2, '0');
+        
+        const formattedDate = `${day}-${month}-${year}`; // Always return DD-MM-YYYY
+        
+        // Validate the constructed date
+        const testDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+        if (!isNaN(testDate.getTime()) && 
+            testDate.getDate() === parseInt(day) &&
+            testDate.getMonth() === parseInt(month) - 1 &&
+            testDate.getFullYear() === parseInt(year)) {
+          return formattedDate;
+        }
+      }
+    }
+    
+    // Try direct Date parsing as last resort
+    try {
+      const date = new Date(dateString);
+      if (!isNaN(date.getTime())) {
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        return `${day}-${month}-${year}`; // Return DD-MM-YYYY format
+      }
+    } catch (e) {
+      // Ignore error and return empty string
+    }
+    
+    return ''; // Return empty string if all parsing attempts fail
+  };
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -309,8 +522,8 @@ export default function UploadFees() {
             <DollarSign className="h-8 w-8" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold">Upload Fees</h1>
-            <p className="text-white/80">Upload student fees records using Excel file</p>
+            <h1 className="text-3xl font-bold">Upload Bulk Fees</h1>
+            <p className="text-white/80">Upload multiple student fee records using Excel file</p>
           </div>
         </div>
       </div>
@@ -325,29 +538,54 @@ export default function UploadFees() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="bg-green-50 p-4 rounded-lg">
-            <h3 className="font-semibold text-green-900 mb-2">How to upload fees:</h3>
+            <h3 className="font-semibold text-green-900 mb-2">How to upload bulk fees:</h3>
             <ol className="list-decimal list-inside space-y-1 text-green-800">
               <li>Download the Excel template below</li>
               <li>Fill in the fees information (replace sample data with real data)</li>
+              <li><strong>MANDATORY FIELDS:</strong> First Name, Last Name, Father Name, Date of Birth, Student EduNest ID, Fee Collected, Grade, Section</li>
+              <li><strong>NAME FIELDS:</strong> Use only alphabets, spaces, hyphens (-), and apostrophes (') for names</li>
+              <li><strong>DATE FORMAT:</strong> Keep date format as DD-MM-YYYY (e.g., 31-08-2015)</li>
+              <li><strong>NUMERIC FIELDS:</strong> Enter fee amounts as regular numbers (leading zeros will be automatically removed)</li>
               <li>Ensure all required fields are completed</li>
               <li>Upload the completed Excel file</li>
               <li>Review the preview and confirm the upload</li>
             </ol>
           </div>
           
+          <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
+            <h3 className="font-semibold text-amber-900 mb-2">📅 Date Format Important Note:</h3>
+            <p className="text-amber-800 text-sm">
+              To prevent Excel from auto-converting dates: Right-click the "dateOfBirth" column → 
+              Format Cells → Category: Text → OK. This keeps dates in DD-MM-YYYY format.
+            </p>
+          </div>
+          
+          <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+            <h3 className="font-semibold text-green-900 mb-2">✅ Field Validation Rules:</h3>
+            <ul className="text-green-800 text-sm space-y-1">
+              <li><strong>Names:</strong> Only alphabets, spaces, hyphens (-), and apostrophes (') allowed</li>
+              <li><strong>Date of Birth:</strong> Must be in DD-MM-YYYY format (e.g., 31-08-2015)</li>
+              <li><strong>Grade & Section:</strong> Must match existing classes in your school system</li>
+              <li><strong>Fee Amounts:</strong> Must be valid positive numbers (leading zeros will be removed)</li>
+              <li><strong>Student EduNest ID:</strong> Must match existing student records</li>
+              <li><strong>Valid Grades:</strong> {validGrades.length > 0 ? validGrades.join(', ') : 'None configured'}</li>
+              <li><strong>Valid Sections:</strong> {validSections.length > 0 ? validSections.join(', ') : 'None configured'}</li>
+            </ul>
+          </div>
+          
           <div className="bg-amber-50 p-4 rounded-lg">
             <h4 className="font-semibold text-amber-900 mb-2">Required Fields:</h4>
             <ul className="list-disc list-inside space-y-1 text-amber-800 text-sm">
-              <li><strong>firstName:</strong> Student's first name</li>
-              <li><strong>lastName:</strong> Student's last name</li>
-              <li><strong>fatherName:</strong> Father's name</li>
-              <li><strong>dateOfBirth:</strong> Date of birth in YYYY-MM-DD format</li>
+              <li><strong>firstName:</strong> Student's first name (alphabets, spaces, hyphens, apostrophes only)</li>
+              <li><strong>lastName:</strong> Student's last name (alphabets, spaces, hyphens, apostrophes only)</li>
+              <li><strong>fatherName:</strong> Father's name (alphabets, spaces, hyphens, apostrophes only)</li>
+              <li><strong>dateOfBirth:</strong> Date of birth in DD-MM-YYYY format (e.g., 31-08-2015)</li>
               <li><strong>student_edunest_id:</strong> Must match existing student records</li>
-              <li><strong>fee_collected:</strong> Amount collected from student (numeric)</li>
-              <li><strong>fee_waived:</strong> Amount waived (numeric, optional - defaults to 0)</li>
+              <li><strong>fee_collected:</strong> Amount collected from student (numeric, cannot be negative)</li>
+              <li><strong>fee_waived:</strong> Amount waived (numeric, optional - defaults to 0, cannot be negative)</li>
               <li><strong>waiver_reason:</strong> Reason for waiver (optional)</li>
-              <li><strong>grade:</strong> Student's grade/class</li>
-              <li><strong>section:</strong> Student's section</li>
+              <li><strong>grade:</strong> Student's grade/class (must match existing grades in system)</li>
+              <li><strong>section:</strong> Student's section (must match existing sections in system)</li>
             </ul>
           </div>
           
@@ -371,7 +609,7 @@ export default function UploadFees() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Upload className="h-5 w-5" />
-            Upload Fees Records
+            Upload Bulk Fee Records
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -466,7 +704,7 @@ export default function UploadFees() {
             disabled={!file || uploading || previewData.length === 0}
             className="w-full bg-gradient-to-r from-green-500 to-teal-600"
           >
-            {uploading ? "Uploading..." : `Upload ${previewData.length} Fee Records`}
+            {uploading ? "Uploading..." : `Upload ${previewData.length} Bulk Fee Records`}
           </Button>
         </CardContent>
       </Card>
@@ -500,7 +738,7 @@ export default function UploadFees() {
       {/* Recent Uploads */}
       <Card>
         <CardHeader>
-          <CardTitle>Recent Fee Uploads</CardTitle>
+          <CardTitle>Recent Bulk Fee Uploads</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>

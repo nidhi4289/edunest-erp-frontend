@@ -20,8 +20,8 @@ export default function Comms() {
   const [communications, setCommunications] = useState<Communication[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // This should not be needed since route is protected, but adding as extra safety
-  if (!isAuthenticated || !token) {
+  // Redirect to login if not authenticated
+  if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 

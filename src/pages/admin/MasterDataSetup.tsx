@@ -185,6 +185,16 @@ export default function MasterDataSetup() {
   // Use subjects from context
   const [existingAssessments, setExistingAssessments] = useState<any[]>([]);
   
+  // Assessment edit/delete state
+  const [isEditAssessment, setIsEditAssessment] = useState(false);
+  const [editingAssessmentId, setEditingAssessmentId] = useState<string | null>(null);
+  const [deleteAssessmentDialog, setDeleteAssessmentDialog] = useState({
+    open: false,
+    assessmentId: '',
+    assessmentName: ''
+  });
+  const [deletingAssessment, setDeletingAssessment] = useState(false);
+  
   // State for Fees
   const [monthlyFee, setMonthlyFee] = useState("");
   const [admissionFee, setAdmissionFee] = useState("");
@@ -474,6 +484,18 @@ export default function MasterDataSetup() {
 
   const handleAssessmentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate max marks when grading type is marks
+    if (gradingType === "marks" && (!maxMarks || Number(maxMarks) <= 0)) {
+      setResultDialog({
+        open: true,
+        title: 'Validation Error',
+        message: 'Max Marks is required and must be greater than 0 when grading type is "Marks".',
+        type: 'error'
+      });
+      return;
+    }
+    
     // Find classId from masterDataClasses
     const selectedClass = masterDataClasses.find(
       (cls) => String(cls.grade) === selectedGrade && String(cls.section) === selectedSection
@@ -531,6 +553,149 @@ export default function MasterDataSetup() {
         type: 'error'
       });
     }
+  };
+
+  // Handle editing an assessment
+  const handleEditAssessment = (assessment: any) => {
+    setIsEditAssessment(true);
+    setEditingAssessmentId(assessment.id);
+    setGradingType(assessment.gradingType || "marks");
+    setMaxMarks(assessment.maxMarks?.toString() || "");
+    setShowAddAssessment(true);
+  };
+
+  // Handle updating an assessment
+  const handleUpdateAssessment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingAssessmentId) return;
+
+    // Validate max marks when grading type is marks
+    if (gradingType === "marks" && (!maxMarks || Number(maxMarks) <= 0)) {
+      setResultDialog({
+        open: true,
+        title: 'Validation Error',
+        message: 'Max Marks is required and must be greater than 0 when grading type is "Marks".',
+        type: 'error'
+      });
+      return;
+    }
+
+    try {
+      const body = {
+        id: editingAssessmentId,
+        gradingType,
+        maxMarks: gradingType === "marks" ? Number(maxMarks) : 0
+      };
+
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/MasterData/assessments/${editingAssessmentId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (res.ok) {
+        setShowAddAssessment(false);
+        setIsEditAssessment(false);
+        setEditingAssessmentId(null);
+        setMaxMarks("");
+        setGradingType("marks");
+        await fetchAssessments(); // Refresh grid with updated data
+        setResultDialog({
+          open: true,
+          title: 'Success',
+          message: 'Assessment updated successfully.',
+          type: 'success'
+        });
+      } else {
+        const errorData = await res.json().catch(() => ({ message: "Unknown error" }));
+        setResultDialog({
+          open: true,
+          title: 'Update Failed',
+          message: `Failed to update assessment: ${errorData.message || "Please try again."}`,
+          type: 'error'
+        });
+      }
+    } catch (err) {
+      console.error("Error updating assessment:", err);
+      setResultDialog({
+        open: true,
+        title: 'Error',
+        message: 'Error updating assessment. Please try again.',
+        type: 'error'
+      });
+    }
+  };
+
+  // Handle canceling assessment edit mode
+  const handleCancelAssessmentEdit = () => {
+    setIsEditAssessment(false);
+    setEditingAssessmentId(null);
+    setShowAddAssessment(false);
+    setMaxMarks("");
+    setGradingType("marks");
+  };
+
+  // Handle delete assessment confirmation
+  const handleDeleteAssessment = (assessment: any) => {
+    const assessmentName = `${assessment.name} (${assessment.subjectName})`;
+    setDeleteAssessmentDialog({
+      open: true,
+      assessmentId: assessment.id,
+      assessmentName: assessmentName
+    });
+  };
+
+  // Handle actual assessment deletion
+  const handleConfirmDeleteAssessment = async () => {
+    if (!deleteAssessmentDialog.assessmentId) return;
+
+    setDeletingAssessment(true);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/MasterData/assessments/${deleteAssessmentDialog.assessmentId}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      });
+
+      if (res.ok) {
+        setDeleteAssessmentDialog({ open: false, assessmentId: '', assessmentName: '' });
+        await fetchAssessments(); // Refresh grid
+        setResultDialog({
+          open: true,
+          title: 'Success',
+          message: 'Assessment deleted successfully.',
+          type: 'success'
+        });
+      } else {
+        const errorData = await res.json().catch(() => ({ message: "Unknown error" }));
+        setResultDialog({
+          open: true,
+          title: 'Delete Failed',
+          message: `Failed to delete assessment: ${errorData.message || "Please try again."}`,
+          type: 'error'
+        });
+      }
+    } catch (err) {
+      console.error("Error deleting assessment:", err);
+      setResultDialog({
+        open: true,
+        title: 'Error',
+        message: 'Error deleting assessment. Please try again.',
+        type: 'error'
+      });
+    } finally {
+      setDeletingAssessment(false);
+    }
+  };
+
+  // Handle cancel delete assessment
+  const handleCancelDeleteAssessment = () => {
+    setDeleteAssessmentDialog({ open: false, assessmentId: '', assessmentName: '' });
   };
 
   // Fees handlers
@@ -1096,8 +1261,8 @@ export default function MasterDataSetup() {
                               <td className="px-4 py-2">{assess.subjectName}</td>
                               <td className="px-4 py-2">{assess.maxMarks}</td>
                               <td className="px-4 py-2 flex gap-2">
-                                <Button size="sm" variant="outline" onClick={() => alert('Edit not implemented yet')}>Edit</Button>
-                                <Button size="sm" variant="destructive" onClick={() => alert('Delete not implemented yet')}>Delete</Button>
+                                <Button size="sm" variant="outline" onClick={() => handleEditAssessment(assess)}>Edit</Button>
+                                <Button size="sm" variant="destructive" onClick={() => handleDeleteAssessment(assess)}>Delete</Button>
                               </td>
                             </tr>
                           ))}
@@ -1127,13 +1292,16 @@ export default function MasterDataSetup() {
                     >
                       &times;
                     </button>
-                    <form onSubmit={handleAssessmentSubmit} className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="academicYear">Academic Year</Label>
-                        <select id="academicYear" className="w-full border border-gray-300 rounded px-3 py-2 mt-1" value={academicYear} disabled>
-                          <option value="2025-26">2025-26</option>
-                        </select>
-                      </div>
+                    <h2 className="text-xl font-bold mb-4">{isEditAssessment ? 'Edit Assessment' : 'Add Assessment'}</h2>
+                    <form onSubmit={isEditAssessment ? handleUpdateAssessment : handleAssessmentSubmit} className="space-y-4">
+                      {!isEditAssessment && (
+                        <div className="space-y-2">
+                          <Label htmlFor="academicYear">Academic Year</Label>
+                          <select id="academicYear" className="w-full border border-gray-300 rounded px-3 py-2 mt-1" value={academicYear} disabled>
+                            <option value="2025-26">2025-26</option>
+                          </select>
+                        </div>
+                      )}
                       <div className="space-y-2">
                         <Label htmlFor="gradingType">Grading Type</Label>
                         <select
@@ -1152,8 +1320,8 @@ export default function MasterDataSetup() {
                           <Input id="maxMarks" type="number" value={maxMarks} onChange={e => setMaxMarks(e.target.value)} placeholder="Enter max marks" />
                         </div>
                       )}
-                      <Button type="submit">Save Assessment</Button>
-                      <Button type="button" variant="outline" onClick={() => setShowAddAssessment(false)}>
+                      <Button type="submit">{isEditAssessment ? 'Update Assessment' : 'Save Assessment'}</Button>
+                      <Button type="button" variant="outline" onClick={isEditAssessment ? handleCancelAssessmentEdit : () => setShowAddAssessment(false)}>
                         Cancel
                       </Button>
                     </form>
@@ -1579,13 +1747,13 @@ export default function MasterDataSetup() {
       </div>
     )}
 
-    {/* Delete Confirmation Dialog */}
+    {/* Delete Fee Confirmation Dialog */}
     <Dialog open={deleteDialog.open} onOpenChange={(open) => !open && handleCancelDelete()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-red-600">
             <AlertCircle className="h-5 w-5" />
-            Confirm Delete
+            Confirm Delete Fee
           </DialogTitle>
         </DialogHeader>
         <div className="py-4">
@@ -1610,6 +1778,42 @@ export default function MasterDataSetup() {
             disabled={deleting}
           >
             {deleting ? "Deleting..." : "Delete"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+
+    {/* Delete Assessment Confirmation Dialog */}
+    <Dialog open={deleteAssessmentDialog.open} onOpenChange={(open) => !open && handleCancelDeleteAssessment()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-red-600">
+            <AlertCircle className="h-5 w-5" />
+            Confirm Delete Assessment
+          </DialogTitle>
+        </DialogHeader>
+        <div className="py-4">
+          <p className="text-gray-700">
+            Are you sure you want to delete the assessment <strong>{deleteAssessmentDialog.assessmentName}</strong>?
+          </p>
+          <p className="text-sm text-red-600 mt-2">
+            This action cannot be undone and will remove all associated marks data.
+          </p>
+        </div>
+        <div className="flex gap-3 justify-end">
+          <Button 
+            variant="outline"
+            onClick={handleCancelDeleteAssessment}
+            disabled={deletingAssessment}
+          >
+            Cancel
+          </Button>
+          <Button 
+            variant="destructive"
+            onClick={handleConfirmDeleteAssessment}
+            disabled={deletingAssessment}
+          >
+            {deletingAssessment ? "Deleting..." : "Delete"}
           </Button>
         </div>
       </DialogContent>

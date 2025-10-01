@@ -9,7 +9,8 @@ import Settings from "@/pages/Settings";
 import Login from "@/pages/Login";
 import AddBulkStudents from "@/pages/admin/AddBulkStudents";
 import UpdateStudent from "@/pages/admin/UpdateStudent";
-import UploadFees from "@/pages/admin/UploadFees";
+import UploadBulkFees from "@/pages/accounts/UploadBulkFees";
+import FeeManagement from "@/pages/accounts/FeeManagement";
 import ManageComms from "@/pages/admin/ManageComms";
 import Comms from "@/pages/Comms";
 import UploadAttendance from "@/pages/staff/UploadAttendance";
@@ -59,7 +60,8 @@ const router = createBrowserRouter([
       { path: "/admin/bulk-add-students", element: <AddBulkStudents /> },
       { path: "/admin/add-student", element: <AddStudent /> },
       { path: "/admin/update-student", element: <UpdateStudent /> },
-      { path: "/admin/upload-fees", element: <UploadFees /> },
+      { path: "/accounts/fee-management", element: <FeeManagement /> },
+      { path: "/accounts/upload-bulk-fees", element: <UploadBulkFees /> },
       { path: "/admin/comms", element: <ManageComms /> },
       { path: "/admin/add-staff", element: <AddStaff /> },
       { path: "/admin/manage-staff", element: <ManageStaff /> },

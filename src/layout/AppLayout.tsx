@@ -2,9 +2,9 @@ import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { 
   Home, Users, GraduationCap, MessageSquare, Settings as SettingsIcon, 
-  Shield, UserPlus, Edit, DollarSign, FileSpreadsheet,
+  Shield, UserPlus, Edit, DollarSign, FileSpreadsheet, Calculator,
   ChevronDown, ChevronRight, Menu, X, Clock, UserCheck, 
-  BookOpen, ClipboardList, FileText, User, LogOut
+  BookOpen, ClipboardList, FileText, User, LogOut, Wallet
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { 
@@ -29,6 +29,7 @@ function Sidebar({
 }) {
   const [adminExpanded, setAdminExpanded] = useState(false);
   const [staffExpanded, setStaffExpanded] = useState(false);
+  const [accountsExpanded, setAccountsExpanded] = useState(false);
   const { logout, userId, role } = useAuth();
   const navigate = useNavigate();
 
@@ -60,13 +61,18 @@ function Sidebar({
     { to: "/staff/assign-homework", label: "Assign Homework", icon: ClipboardList },
   ] as const;
 
+  // Accounts sub-items (only for admin and staff with financial access)
+  const accountsItems = [
+    { to: "/accounts/fee-management", label: "Fee Management", icon: Wallet },
+    { to: "/accounts/upload-bulk-fees", label: "Upload Bulk Fees", icon: DollarSign },
+  ] as const;
+
   // Admin sub-items (only for admin)
  const adminItems = [
   { to: "/dashboard", label: "Dashboard", icon: Home, end: true },
   { to: "/admin/add-student", label: "Add Student", icon: UserPlus },
   { to: "/admin/bulk-add-students", label: "Add Bulk Students", icon: UserPlus },
   { to: "/admin/update-student", label: "Update Student", icon: Edit },
-  { to: "/admin/upload-fees", label: "Upload Fees", icon: DollarSign },
   { to: "/admin/comms", label: "Communications", icon: MessageSquare },
   { to: "/admin/add-staff", label: "Add Staff", icon: UserPlus },
   { to: "/admin/manage-staff", label: "Manage Staff", icon: Users },
@@ -76,6 +82,7 @@ function Sidebar({
   // Determine what to show based on role
   const showAdminItems: boolean = userRole === "Admin";
   const showStaffItems: boolean = userRole === "Admin" || userRole === "Teacher";
+  const showAccountsItems: boolean = userRole === "Admin" || userRole === "Teacher"; // Accounts visible to Admin and Teachers
 
   return (
     <>
@@ -233,6 +240,49 @@ function Sidebar({
                         `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
                           isActive
                             ? "bg-green-50 text-green-700 border border-green-200"
+                            : "text-neutral-500 hover:bg-neutral-50"
+                        }`
+                      }
+                    >
+                      <item.icon className="h-3 w-3" />
+                      {item.label}
+                    </NavLink>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Accounts Section (visible to admin and staff with financial access) */}
+          {userRole !== "Student" && showAccountsItems && (
+            <div className="space-y-1">
+              <button
+                onClick={() => setAccountsExpanded(!accountsExpanded)}
+                className="flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm font-medium text-neutral-600 hover:bg-neutral-100 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <Calculator className="h-4 w-4" />
+                  Accounts
+                </div>
+                {accountsExpanded ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </button>
+
+              {/* Accounts Sub-items */}
+              {accountsExpanded && (
+                <div className="ml-4 space-y-1 border-l-2 border-neutral-100 pl-3">
+                  {accountsItems.map((item) => (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      onClick={onClose}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                          isActive
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                             : "text-neutral-500 hover:bg-neutral-50"
                         }`
                       }
