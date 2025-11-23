@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/services/api";
@@ -6,15 +6,39 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { LogIn, User, Lock, AlertCircle } from "lucide-react";
+import { LogIn, User, Lock, AlertCircle, Eye, EyeOff } from "lucide-react";
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, isAuthenticated, role } = useAuth();
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Redirect authenticated users away from login page
+  useEffect(() => {
+    if (isAuthenticated && role) {
+      // Redirect to appropriate page based on role
+      switch (role.toLowerCase()) {
+        case 'student':
+          navigate("/student/my-details", { replace: true });
+          break;
+        case 'teacher':
+        case 'staff':
+          navigate("/staff/upload-attendance", { replace: true });
+          break;
+        case 'admin':
+        case 'principal':
+        case 'superadmin':
+          navigate("/dashboard", { replace: true });
+          break;
+        default:
+          navigate("/settings", { replace: true });
+      }
+    }
+  }, [isAuthenticated, role, navigate]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -22,13 +46,19 @@ export default function Login() {
     setError("");
     
     try {
+      console.log('🔐 Starting login process...', {
+        userId,
+        tenantId: import.meta.env.VITE_TENANT_ID,
+        apiBaseURL: import.meta.env.VITE_API_URL
+      });
+      
       const response = await api.post("/Auth/login", {
         userId,
         password,
         tenantId: import.meta.env.VITE_TENANT_ID
       });
 
-      const { token, role, passwordResetRequired, userGuid } = response.data;
+      const { token, role, passwordResetRequired, userGuid, grade, section, classId, className } = response.data;
 
       if (passwordResetRequired) {
         navigate("/first-reset", { state: { userId, tenantId: import.meta.env.VITE_TENANT_ID } });
@@ -39,18 +69,76 @@ export default function Login() {
         throw new Error("No token received from server");
       }
 
-      await login(token, role, userGuid, userId);
-      navigate("/dashboard");
+      // Create topic name for push notifications if user is a student
+      let studentData = null;
+      if (role?.toLowerCase() === 'student' && grade && section) {
+        const schoolId = import.meta.env.VITE_TENANT_ID;
+        const topicName = `school_${schoolId}_class_${grade}${section}`;
+        console.log('Generated topic name for push notifications:', topicName);
+        
+        studentData = {
+          grade,
+          section,
+          classId,
+          className,
+          topicName
+        };
+      }
+
+      await login(token, role, userGuid, userId, studentData);
+      
+      // Role-based redirect after login
+      switch (role?.toLowerCase()) {
+        case 'student':
+          navigate("/student/my-details");
+          break;
+        case 'teacher':
+        case 'staff':
+          navigate("/staff/upload-attendance");
+          break;
+        case 'admin':
+        case 'principal':
+        case 'superadmin':
+          navigate("/dashboard");
+          break;
+        default:
+          navigate("/"); // This will trigger RoleBasedRedirect
+      }
     } catch (err: any) {
-      console.error("Login error:", err);
-      setError(err.response?.data?.message || "Login failed. Please try again.");
+      console.error("❌ Login failed with detailed error:", {
+        errorMessage: err.message,
+        errorCode: err.code,
+        httpStatus: err.response?.status,
+        httpStatusText: err.response?.statusText,
+        responseData: err.response?.data,
+        isNetworkError: !err.response,
+        isTimeout: err.code === 'ECONNABORTED',
+        requestConfig: {
+          url: err.config?.url,
+          method: err.config?.method,
+          baseURL: err.config?.baseURL,
+          timeout: err.config?.timeout
+        }
+      });
+      
+      // User-friendly error messages based on error type
+      let userError = "Login failed. Please try again.";
+      if (!err.response) {
+        userError = "Cannot connect to server. Please check your internet connection.";
+      } else if (err.response.status >= 500) {
+        userError = "Server error. Please try again later.";
+      } else if (err.response?.data?.message) {
+        userError = err.response.data.message;
+      }
+      
+      setError(userError);
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-500 via-purple-600 to-indigo-800 flex">
+    <div className="min-h-screen bg-gradient-to-br from-blue-500 via-purple-600 to-indigo-800 flex items-center">
       {/* Left Side - Hero Section */}
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
         {/* Background Pattern */}
@@ -104,26 +192,26 @@ export default function Login() {
       </div>
 
       {/* Right Side - Login Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-white relative">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-4 lg:p-8 bg-white relative min-h-screen lg:min-h-0">
         {/* Mobile Logo (visible only on small screens) */}
         <div className="lg:hidden absolute top-8 left-1/2 transform -translate-x-1/2">
           <img 
             src="/OnlyLogo.png" 
             alt="EduNest Logo" 
-            className="h-22 w-22 object-contain drop-shadow-2xl"
+            className="h-16 w-16 object-contain drop-shadow-2xl"
             onError={(e) => {
               const target = e.target as HTMLImageElement;
               target.style.display = 'none';
               target.nextElementSibling?.classList.remove('hidden');
             }}
           />
-          <div className="h-22 w-22 hidden bg-white/20 backdrop-blur-lg rounded-3xl flex items-center justify-center shadow-2xl border border-white/30">
-            <LogIn className="h-11 w-11 text-gray-600 drop-shadow-lg" />
+          <div className="h-16 w-16 hidden bg-white/20 backdrop-blur-lg rounded-3xl flex items-center justify-center shadow-2xl border border-white/30">
+            <LogIn className="h-8 w-8 text-gray-600 drop-shadow-lg" />
           </div>
         </div>
 
         {/* Login Card */}
-        <div className="w-full max-w-md mt-24 lg:mt-0">
+        <div className="w-full max-w-md mt-20 lg:mt-0">
           {/* Welcome Header */}
           <div className="text-center mb-8">
             <h2 className="text-3xl font-bold text-gray-800 mb-2">Welcome Back</h2>
@@ -149,6 +237,10 @@ export default function Login() {
                       onChange={(e) => setUserId(e.target.value)}
                       required
                       disabled={loading}
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      autoComplete="username"
+                      spellCheck={false}
                       className="pl-12 h-12 border-2 border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 rounded-xl"
                     />
                     <User className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -164,15 +256,30 @@ export default function Login() {
                   <div className="relative">
                     <Input
                       id="password"
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       placeholder="Enter your password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
                       disabled={loading}
-                      className="pl-12 h-12 border-2 border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 rounded-xl"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      autoComplete="current-password"
+                      className="pl-12 pr-12 h-12 border-2 border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 rounded-xl"
                     />
                     <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                      disabled={loading}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-5 w-5" />
+                      ) : (
+                        <Eye className="h-5 w-5" />
+                      )}
+                    </button>
                   </div>
                 </div>
 

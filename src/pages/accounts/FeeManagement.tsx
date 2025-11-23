@@ -9,11 +9,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Edit, Search, Save, User, ChevronLeft, ChevronRight, DollarSign, 
-  Calendar, FileText, X, Check, CheckCircle, AlertCircle, Plus, Wallet 
+  Calendar, FileText, X, Check, CheckCircle, AlertCircle, Plus, Wallet,
+  Upload, Camera, Eye, Download, Trash2
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { api } from "@/services/api";
 import { useAuth } from "@/context/AuthContext";
+import { Camera as CapacitorCamera, CameraResultType, CameraSource } from '@capacitor/camera';
+import { Capacitor } from '@capacitor/core';
 
 interface Student {
   eduNestId: string;
@@ -52,6 +55,27 @@ interface FeeRecord {
   feeRemaining: number;
   createdAt: string;
   modifiedDate: string;
+  receiptImages?: ReceiptImage[];
+}
+
+interface ReceiptImage {
+  id: string;
+  feeRecordId: string;
+  fileName: string;
+  originalName: string;
+  filePath: string;
+  fileSize: number;
+  mimeType: string;
+  uploadedAt: string;
+  uploadedBy: string;
+}
+
+interface FeeFormData {
+  feeCollected: string | number;
+  feeWaived: string | number;
+  waiverReason: string;
+  dateOfCollection: string;
+  receiptFiles?: File[];
 }
 
 interface SearchCriteria {
@@ -71,13 +95,6 @@ interface ResultDialogState {
   title: string;
   message: string;
   type: 'success' | 'error';
-}
-
-interface FeeFormData {
-  feeCollected: number | string;
-  feeWaived: number | string;
-  waiverReason: string;
-  dateOfCollection: string;
 }
 
 export default function FeeManagement() {
@@ -112,7 +129,8 @@ export default function FeeManagement() {
     feeCollected: "",
     feeWaived: "",
     waiverReason: "",
-    dateOfCollection: new Date().toISOString().split('T')[0]
+    dateOfCollection: new Date().toISOString().split('T')[0],
+    receiptFiles: []
   });
   const [updatingFee, setUpdatingFee] = useState(false);
   const [feeResultDialog, setFeeResultDialog] = useState<ResultDialogState>({
@@ -122,14 +140,280 @@ export default function FeeManagement() {
     type: 'success'
   });
   
+  // Receipt image states
+  const [selectedReceiptFiles, setSelectedReceiptFiles] = useState<File[]>([]);
+  const [previewImages, setPreviewImages] = useState<string[]>([]);
+  const [uploadingReceipts, setUploadingReceipts] = useState(false);
+  const [showReceiptDialog, setShowReceiptDialog] = useState(false);
+  const [currentReceiptImages, setCurrentReceiptImages] = useState<ReceiptImage[]>([]);
+  const [selectedFeeForReceipts, setSelectedFeeForReceipts] = useState<string | null>(null);
+  
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const itemsPerPage = 10;
 
+  // Reset function to clear results when dropdown changes
+  const resetSearchResults = () => {
+    setSearchResults([]);
+    setSelectedStudent(null);
+    setFeeRecords([]);
+    setCurrentPage(1);
+    setTotalPages(1);
+    setFeeError(null);
+  };
+
   // Get valid grades and sections from master data
   const validGrades = [...new Set(masterDataClasses.map(cls => String(cls.grade)))];
   const validSections = [...new Set(masterDataClasses.map(cls => String(cls.section)))];
+
+  // Receipt image utility functions
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    const imageFiles = files.filter(file => file.type.startsWith('image/'));
+    
+    if (imageFiles.length !== files.length) {
+      setFeeResultDialog({
+        open: true,
+        title: 'Invalid File Type',
+        message: 'Please select only image files (JPEG, PNG, GIF, etc.)',
+        type: 'error'
+      });
+      return;
+    }
+
+    // Limit file size to 5MB per image
+    const oversizedFiles = imageFiles.filter(file => file.size > 5 * 1024 * 1024);
+    if (oversizedFiles.length > 0) {
+      setFeeResultDialog({
+        open: true,
+        title: 'File Too Large',
+        message: 'Please select images smaller than 5MB each',
+        type: 'error'
+      });
+      return;
+    }
+
+    setSelectedReceiptFiles(prev => [...prev, ...imageFiles]);
+    
+    // Create preview URLs
+    const newPreviews = imageFiles.map(file => URL.createObjectURL(file));
+    setPreviewImages(prev => [...prev, ...newPreviews]);
+  };
+
+  const removeReceiptFile = (index: number) => {
+    setSelectedReceiptFiles(prev => prev.filter((_, i) => i !== index));
+    setPreviewImages(prev => {
+      URL.revokeObjectURL(prev[index]); // Clean up memory
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const uploadReceiptImages = async (feeRecordId: string) => {
+    if (selectedReceiptFiles.length === 0) return [];
+
+    setUploadingReceipts(true);
+    try {
+      const uploadedImages: ReceiptImage[] = [];
+
+      for (const file of selectedReceiptFiles) {
+        const formData = new FormData();
+        formData.append('receiptImage', file);
+        formData.append('feeRecordId', feeRecordId);
+
+        const response = await api.post(`${import.meta.env.VITE_API_URL}/api/ReceiptImages`, formData, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data'
+          }
+        });
+
+        uploadedImages.push(response.data);
+      }
+
+      console.log('Receipt images uploaded successfully:', uploadedImages);
+      return uploadedImages;
+    } catch (error) {
+      console.error('Error uploading receipt images:', error);
+      throw error;
+    } finally {
+      setUploadingReceipts(false);
+    }
+  };
+
+  const loadReceiptImages = async (feeRecordId: string) => {
+    try {
+      const response = await api.get(`${import.meta.env.VITE_API_URL}/api/ReceiptImages/fee/${feeRecordId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      setCurrentReceiptImages(response.data);
+    } catch (error) {
+      console.error('Error loading receipt images:', error);
+      setCurrentReceiptImages([]);
+    }
+  };
+
+  const deleteReceiptImage = async (imageId: string) => {
+    try {
+      await api.delete(`${import.meta.env.VITE_API_URL}/api/ReceiptImages/${imageId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      // Refresh the images list
+      if (selectedFeeForReceipts) {
+        loadReceiptImages(selectedFeeForReceipts);
+      }
+    } catch (error) {
+      console.error('Error deleting receipt image:', error);
+      setFeeResultDialog({
+        open: true,
+        title: 'Delete Failed',
+        message: 'Failed to delete receipt image. Please try again.',
+        type: 'error'
+      });
+    }
+  };
+
+  const viewReceipts = async (feeRecordId: string) => {
+    setSelectedFeeForReceipts(feeRecordId);
+    await loadReceiptImages(feeRecordId);
+    setShowReceiptDialog(true);
+  };
+
+  const takePhotoFromCamera = async () => {
+    try {
+      // Check if running on native platform
+      if (!Capacitor.isNativePlatform()) {
+        setFeeResultDialog({
+          open: true,
+          title: 'Camera Not Available',
+          message: 'Camera capture is only available on mobile devices. Please use file selection instead.',
+          type: 'error'
+        });
+        return;
+      }
+
+      const image = await CapacitorCamera.getPhoto({
+        quality: 80,
+        allowEditing: false,
+        resultType: CameraResultType.DataUrl,
+        source: CameraSource.Camera,
+        width: 1024, // Limit image size for better performance
+        height: 1024,
+      });
+
+      if (image.dataUrl) {
+        // Convert dataURL to File object
+        const response = await fetch(image.dataUrl);
+        const blob = await response.blob();
+        const timestamp = new Date().getTime();
+        const fileName = `receipt_${timestamp}.jpg`;
+        const file = new File([blob], fileName, { type: 'image/jpeg' });
+
+        // Validate file size (5MB limit)
+        if (file.size > 5 * 1024 * 1024) {
+          setFeeResultDialog({
+            open: true,
+            title: 'File Too Large',
+            message: 'Image size exceeds 5MB limit. Please try again with lower quality.',
+            type: 'error'
+          });
+          return;
+        }
+
+        // Add to selected files
+        setSelectedReceiptFiles(prev => [...prev, file]);
+        
+        // Create preview URL
+        const previewUrl = URL.createObjectURL(blob);
+        setPreviewImages(prev => [...prev, previewUrl]);
+        
+        setFeeResultDialog({
+          open: true,
+          title: 'Photo Captured',
+          message: 'Receipt photo captured successfully!',
+          type: 'success'
+        });
+      }
+    } catch (error: any) {
+      console.error('Camera capture error:', error);
+      let errorMessage = 'Failed to capture photo. Please try again.';
+      
+      if (error.message?.includes('permission')) {
+        errorMessage = 'Camera permission denied. Please enable camera access in settings.';
+      } else if (error.message?.includes('cancelled')) {
+        return; // User cancelled, don't show error
+      }
+      
+      setFeeResultDialog({
+        open: true,
+        title: 'Camera Error',
+        message: errorMessage,
+        type: 'error'
+      });
+    }
+  };
+
+  const selectFromGallery = async () => {
+    try {
+      // Check if running on native platform
+      if (!Capacitor.isNativePlatform()) {
+        // For web, trigger the file input
+        document.getElementById('receipt-upload-edit') || document.getElementById('receipt-upload-add')?.click();
+        return;
+      }
+
+      const image = await CapacitorCamera.getPhoto({
+        quality: 80,
+        allowEditing: false,
+        resultType: CameraResultType.DataUrl,
+        source: CameraSource.Photos, // Use photo library instead of camera
+        width: 1024,
+        height: 1024,
+      });
+
+      if (image.dataUrl) {
+        // Convert dataURL to File object
+        const response = await fetch(image.dataUrl);
+        const blob = await response.blob();
+        const timestamp = new Date().getTime();
+        const fileName = `receipt_${timestamp}.jpg`;
+        const file = new File([blob], fileName, { type: 'image/jpeg' });
+
+        // Validate file size (5MB limit)
+        if (file.size > 5 * 1024 * 1024) {
+          setFeeResultDialog({
+            open: true,
+            title: 'File Too Large',
+            message: 'Image size exceeds 5MB limit. Please try again with a smaller image.',
+            type: 'error'
+          });
+          return;
+        }
+
+        // Add to selected files
+        setSelectedReceiptFiles(prev => [...prev, file]);
+        
+        // Create preview URL
+        const previewUrl = URL.createObjectURL(blob);
+        setPreviewImages(prev => [...prev, previewUrl]);
+      }
+    } catch (error: any) {
+      console.error('Gallery selection error:', error);
+      if (!error.message?.includes('cancelled')) {
+        setFeeResultDialog({
+          open: true,
+          title: 'Gallery Error',
+          message: 'Failed to select image from gallery. Please try again.',
+          type: 'error'
+        });
+      }
+    }
+  };
 
   const handleSearch = async () => {
     // Validate at least one field is filled
@@ -341,11 +625,30 @@ export default function FeeManagement() {
         console.log('Add fee response:', response.data);
       }
 
+      // Upload receipt images if any are selected
+      let uploadMessage = '';
+      if (selectedReceiptFiles.length > 0 && response.data) {
+        try {
+          const uploadedImages = await uploadReceiptImages(response.data.id);
+          uploadMessage = ` and ${uploadedImages.length} receipt image(s) uploaded`;
+        } catch (uploadError) {
+          console.error('Receipt upload error:', uploadError);
+          uploadMessage = ', but receipt upload failed';
+        }
+      }
+
       setFeeResultDialog({
         open: true,
         title: editingFeeId ? 'Update Successful' : 'Add Successful',
-        message: editingFeeId ? 'Fee record updated successfully' : 'Fee record added successfully',
+        message: (editingFeeId ? 'Fee record updated successfully' : 'Fee record added successfully') + uploadMessage,
         type: 'success'
+      });
+
+      // Clear receipt files after successful upload
+      setSelectedReceiptFiles([]);
+      setPreviewImages(prev => {
+        prev.forEach(url => URL.revokeObjectURL(url));
+        return [];
       });
 
       // Refresh fee records
@@ -372,8 +675,17 @@ export default function FeeManagement() {
       feeCollected: "" as any,
       feeWaived: "" as any,
       waiverReason: "",
-      dateOfCollection: new Date().toISOString().split('T')[0]
+      dateOfCollection: new Date().toISOString().split('T')[0],
+      receiptFiles: []
     });
+    
+    // Clear receipt files and previews
+    setSelectedReceiptFiles([]);
+    setPreviewImages(prev => {
+      prev.forEach(url => URL.revokeObjectURL(url));
+      return [];
+    });
+    
     setFeeResultDialog({ open: false, title: '', message: '', type: 'success' });
   };
 
@@ -446,10 +758,15 @@ export default function FeeManagement() {
               <Input
                 placeholder="Enter first name"
                 value={searchCriteria.firstName}
-                onChange={(e) => setSearchCriteria(prev => ({
-                  ...prev,
-                  firstName: e.target.value
-                }))}
+                onChange={(e) => {
+                  setSearchCriteria(prev => ({
+                    ...prev,
+                    firstName: e.target.value
+                  }));
+                  if (searchResults.length > 0) {
+                    resetSearchResults();
+                  }
+                }}
               />
             </div>
             <div>
@@ -457,20 +774,28 @@ export default function FeeManagement() {
               <Input
                 placeholder="Enter last name"
                 value={searchCriteria.lastName}
-                onChange={(e) => setSearchCriteria(prev => ({
-                  ...prev,
-                  lastName: e.target.value
-                }))}
+                onChange={(e) => {
+                  setSearchCriteria(prev => ({
+                    ...prev,
+                    lastName: e.target.value
+                  }));
+                  if (searchResults.length > 0) {
+                    resetSearchResults();
+                  }
+                }}
               />
             </div>
             <div>
               <label className="text-sm font-medium text-gray-600 mb-1 block">Grade</label>
               <Select
                 value={searchCriteria.grade || "all"}
-                onValueChange={(value) => setSearchCriteria(prev => ({
-                  ...prev,
-                  grade: value === "all" ? "" : value
-                }))}
+                onValueChange={(value) => {
+                  setSearchCriteria(prev => ({
+                    ...prev,
+                    grade: value === "all" ? "" : value
+                  }));
+                  resetSearchResults();
+                }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select grade" />
@@ -487,10 +812,13 @@ export default function FeeManagement() {
               <label className="text-sm font-medium text-gray-600 mb-1 block">Section</label>
               <Select
                 value={searchCriteria.section || "all"}
-                onValueChange={(value) => setSearchCriteria(prev => ({
-                  ...prev,
-                  section: value === "all" ? "" : value
-                }))}
+                onValueChange={(value) => {
+                  setSearchCriteria(prev => ({
+                    ...prev,
+                    section: value === "all" ? "" : value
+                  }));
+                  resetSearchResults();
+                }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select section" />
@@ -729,15 +1057,30 @@ export default function FeeManagement() {
                             {formatDate(record.modifiedDate)}
                           </TableCell>
                           <TableCell>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleEditFee(record)}
-                              className="flex items-center gap-1"
-                            >
-                              <Edit className="h-3 w-3" />
-                              Edit
-                            </Button>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleEditFee(record)}
+                                className="flex items-center gap-1"
+                              >
+                                <Edit className="h-3 w-3" />
+                                Edit
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedFeeForReceipts(record.id);
+                                  setShowReceiptDialog(true);
+                                  loadReceiptImages(record.id);
+                                }}
+                                className="flex items-center gap-1 text-blue-600 hover:text-blue-700"
+                              >
+                                <Camera className="h-3 w-3" />
+                                Receipts
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -802,6 +1145,79 @@ export default function FeeManagement() {
                 placeholder="Enter reason for fee waiver (optional)"
                 rows={3}
               />
+            </div>
+
+            {/* Receipt Upload Section */}
+            <div className="space-y-2">
+              <Label>Receipt Images</Label>
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
+                <div className="text-center">
+                  <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                  <p className="text-sm text-gray-600 mb-2">Upload receipt images</p>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    id="receipt-upload-edit"
+                  />
+                  <div className="flex gap-2 justify-center flex-wrap">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={takePhotoFromCamera}
+                    >
+                      <Camera className="h-4 w-4 mr-1" />
+                      Camera
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={selectFromGallery}
+                    >
+                      <Upload className="h-4 w-4 mr-1" />
+                      Gallery
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => document.getElementById('receipt-upload-edit')?.click()}
+                    >
+                      <FileText className="h-4 w-4 mr-1" />
+                      Files
+                    </Button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">JPEG, PNG, GIF (max 5MB each)</p>
+                </div>
+              </div>
+              
+              {/* Preview Selected Images */}
+              {previewImages.length > 0 && (
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  {previewImages.map((preview, index) => (
+                    <div key={index} className="relative">
+                      <img
+                        src={preview}
+                        alt={`Receipt ${index + 1}`}
+                        className="w-full h-20 object-cover rounded border"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => removeReceiptFile(index)}
+                        className="absolute -top-2 -right-2 h-6 w-6 p-0 rounded-full bg-red-500 text-white hover:bg-red-600"
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-2 pt-4">
@@ -885,6 +1301,79 @@ export default function FeeManagement() {
                 placeholder="Enter reason for fee waiver (optional)"
                 rows={3}
               />
+            </div>
+
+            {/* Receipt Upload Section */}
+            <div className="space-y-2">
+              <Label>Receipt Images</Label>
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
+                <div className="text-center">
+                  <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                  <p className="text-sm text-gray-600 mb-2">Upload receipt images</p>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    id="receipt-upload-add"
+                  />
+                  <div className="flex gap-2 justify-center flex-wrap">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={takePhotoFromCamera}
+                    >
+                      <Camera className="h-4 w-4 mr-1" />
+                      Camera
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={selectFromGallery}
+                    >
+                      <Upload className="h-4 w-4 mr-1" />
+                      Gallery
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => document.getElementById('receipt-upload-add')?.click()}
+                    >
+                      <FileText className="h-4 w-4 mr-1" />
+                      Files
+                    </Button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">JPEG, PNG, GIF (max 5MB each)</p>
+                </div>
+              </div>
+              
+              {/* Preview Selected Images */}
+              {previewImages.length > 0 && (
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  {previewImages.map((preview, index) => (
+                    <div key={index} className="relative">
+                      <img
+                        src={preview}
+                        alt={`Receipt ${index + 1}`}
+                        className="w-full h-20 object-cover rounded border"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => removeReceiptFile(index)}
+                        className="absolute -top-2 -right-2 h-6 w-6 p-0 rounded-full bg-red-500 text-white hover:bg-red-600"
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-2 pt-4">
@@ -976,6 +1465,84 @@ export default function FeeManagement() {
               className="bg-gradient-to-r from-emerald-500 to-teal-600"
             >
               OK
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Receipt Viewing Dialog */}
+      <Dialog open={showReceiptDialog} onOpenChange={setShowReceiptDialog}>
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Camera className="h-5 w-5" />
+              Receipt Images
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            {currentReceiptImages.length === 0 ? (
+              <div className="text-center py-8">
+                <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-600">No receipt images found for this fee record.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {currentReceiptImages.map((receipt) => (
+                  <div key={receipt.id} className="border rounded-lg overflow-hidden">
+                    <div className="aspect-square bg-gray-100">
+                      <img
+                        src={`${import.meta.env.VITE_API_URL}/api/ReceiptImages/${receipt.id}/download`}
+                        alt={`Receipt ${receipt.fileName}`}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDJMMTMuMDkgOC4yNkwyMCA5TDEzLjA5IDE1Ljc0TDEyIDIyTDEwLjkxIDE1Ljc0TDQgOUwxMC45MSA4LjI2TDEyIDJaIiBzdHJva2U9IiM5Q0EzQUYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPgo=';
+                        }}
+                      />
+                    </div>
+                    <div className="p-3">
+                      <div className="text-sm font-medium text-gray-900 mb-1">
+                        {receipt.fileName}
+                      </div>
+                      <div className="text-xs text-gray-500 mb-2">
+                        {receipt.uploadedAt && new Date(receipt.uploadedAt).toLocaleDateString()}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const link = document.createElement('a');
+                            link.href = `${import.meta.env.VITE_API_URL}/api/ReceiptImages/${receipt.id}/download`;
+                            link.download = receipt.fileName;
+                            link.click();
+                          }}
+                          className="flex-1"
+                        >
+                          <Download className="h-3 w-3 mr-1" />
+                          Download
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => deleteReceiptImage(receipt.id)}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex justify-end">
+            <Button 
+              onClick={() => setShowReceiptDialog(false)}
+              className="bg-gradient-to-r from-emerald-500 to-teal-600"
+            >
+              Close
             </Button>
           </div>
         </DialogContent>

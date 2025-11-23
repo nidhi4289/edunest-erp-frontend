@@ -5,7 +5,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 
 export default function UploadMarks() {
-  const { token } = useAuth();
+  const { token, masterDataClasses, masterDataSubjects } = useAuth();
   const [students, setStudents] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
   const [assessments, setAssessments] = useState<any[]>([]);
@@ -20,64 +20,132 @@ export default function UploadMarks() {
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingAssessmentNames, setLoadingAssessmentNames] = useState(false);
+  const [availableAssessmentNames, setAvailableAssessmentNames] = useState<string[]>([]);
 
-  // Fetch assessments when academic year changes
-  useEffect(() => {
-    if (!academicYear) return;
-    setLoading(true);
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-  fetch(`${import.meta.env.VITE_API_URL}/api/MasterData/assessments?academicYear=${academicYear}`, { headers })
-      .then(res => res.json())
-      .then(data => setAssessments(data || []))
-      .finally(() => setLoading(false));
-  }, [academicYear]);
-
-  // Get unique values for dropdowns
-  const gradeOptions = Array.from(new Set(assessments.map((a: any) => a.grade)));
+  // Get unique values for dropdowns from masterDataClasses (same as other working pages)
+  const gradeOptions = Array.from(new Set(masterDataClasses.map((c: any) => String(c.grade))));
   const sectionOptions = selectedGrade
-    ? Array.from(new Set(assessments.filter((a: any) => a.grade === selectedGrade).map((a: any) => a.section)))
+    ? Array.from(new Set(masterDataClasses.filter((c: any) => String(c.grade) === selectedGrade).map((c: any) => String(c.section))))
     : [];
-  // Only distinct assessment names for dropdown
-  const assessmentOptions = (selectedGrade && selectedSection)
-    ? Array.from(
-        assessments
-          .filter((a: any) => a.grade === selectedGrade && a.section === selectedSection)
-          .reduce((map: any, a: any) => {
-            if (!map.has(a.name)) map.set(a.name, a);
-            return map;
-          }, new Map())
-          .values()
-      )
+  
+  // Get subjects for selected grade/section
+  const availableSubjects = (selectedGrade && selectedSection)
+    ? masterDataClasses
+        .filter((c: any) => String(c.grade) === selectedGrade && String(c.section) === selectedSection)
+        .flatMap((c: any) => c.subjects || [])
+        .filter((subj: any, index: number, arr: any[]) => 
+          arr.findIndex((s: any) => s.id === subj.id) === index
+        )
     : [];
-  const subjectOptions = (selectedGrade && selectedSection && selectedAssessment)
-    ? assessments.filter((a: any) => a.grade === selectedGrade && a.section === selectedSection && a.name === selectedAssessment)
-    : [];
+
+  // Fetch available assessment names for selected grade and section
+  const fetchAssessmentNames = async () => {
+    if (!selectedGrade || !selectedSection) {
+      setAvailableAssessmentNames([]);
+      return;
+    }
+    
+    setLoadingAssessmentNames(true);
+    try {
+      const url = `${import.meta.env.VITE_API_URL}/api/MasterData/assessments?academicYear=${encodeURIComponent(academicYear)}&grade=${encodeURIComponent(selectedGrade)}&section=${encodeURIComponent(selectedSection)}`;
+      
+      const res = await fetch(url, {
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : '',
+        },
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        
+        // Extract unique assessment names
+        const assessmentNames = Array.from(new Set(data.map((a: any) => a.name))).filter(Boolean);
+        
+        // If no assessments found, add default "No assessment" option
+        if (assessmentNames.length === 0) {
+          setAvailableAssessmentNames(['No assessment']);
+        } else {
+          setAvailableAssessmentNames(assessmentNames as string[]);
+        }
+      } else {
+        setAvailableAssessmentNames(['No assessment']);
+      }
+    } catch (error) {
+      setAvailableAssessmentNames(['No assessment']);
+    } finally {
+      setLoadingAssessmentNames(false);
+    }
+  };
+
+  // Fetch assessment names when grade and section are selected
+  useEffect(() => {
+    fetchAssessmentNames();
+  }, [selectedGrade, selectedSection, token]);
+
+  // Fetch assessments when all parameters are selected
+  const fetchAssessments = async () => {
+    if (!selectedGrade || !selectedSection || !selectedSubject || !selectedAssessment) {
+      setAssessments([]);
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const subjectObj = availableSubjects.find((s: any) => s.name === selectedSubject);
+      const subjectName = subjectObj ? subjectObj.name : selectedSubject;
+      
+      const url = `${import.meta.env.VITE_API_URL}/api/MasterData/assessments?academicYear=${encodeURIComponent(academicYear)}&grade=${encodeURIComponent(selectedGrade)}&section=${encodeURIComponent(selectedSection)}&subjectName=${encodeURIComponent(subjectName)}&assessmentName=${encodeURIComponent(selectedAssessment)}`;
+      
+      const res = await fetch(url, {
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : '',
+        },
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setAssessments(data || []);
+        
+        // Set grading type and max marks from the first assessment
+        if (data && data.length > 0) {
+          setGradingType(data[0].gradingType || "");
+          setMaxMarks(data[0].maxMarks || null);
+        }
+      } else {
+        setAssessments([]);
+      }
+    } catch (error) {
+      setAssessments([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch assessments when all required parameters are selected
+  useEffect(() => {
+    fetchAssessments();
+  }, [selectedGrade, selectedSection, selectedSubject, selectedAssessment, token]);
 
   // Find the assessment object and max marks for selected subject
-  const assessmentObj = assessments.find((a: any) =>
-    a.grade === selectedGrade &&
-    a.section === selectedSection &&
-    a.name === selectedAssessment &&
-    a.subjectName === selectedSubject
-  );
+  const assessmentObj = assessments.length > 0 ? assessments[0] : null;
   const maxMarksAllowed = assessmentObj?.maxMarks ?? null;
+  
   const allMarksFilled = students.length > 0 && students.every((stu: any) => {
     const val = marks[stu.eduNestId];
     return val !== undefined && val !== null && val.trim() !== '' && !isNaN(Number(val));
   });
 
-  // Update grading type and max marks when subject is selected
+  // Update grading type and max marks when assessment data changes
   useEffect(() => {
-    if (selectedGrade && selectedSection && selectedAssessment && selectedSubject) {
-      setGradingType(assessmentObj?.gradingType || "");
-      setMaxMarks(assessmentObj?.maxMarks ?? null);
+    if (assessmentObj) {
+      setGradingType(assessmentObj.gradingType || "");
+      setMaxMarks(assessmentObj.maxMarks ?? null);
     } else {
       setGradingType("");
       setMaxMarks(null);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedGrade, selectedSection, selectedAssessment, selectedSubject, assessments]);
+  }, [assessmentObj]);
 
   // Handler to fetch students after selection
   const handleSearchStudents = async () => {
@@ -111,16 +179,26 @@ export default function UploadMarks() {
     setUploading(true);
     setUploadResult(null);
     try {
-      const assessmentId = assessmentObj?.id || "";
+      // Get the assessment ID from the fetched assessment data
+      const assessmentId = assessmentObj?.id;
+      
+      if (!assessmentId) {
+        setUploadResult('Error: Assessment ID not found. Please ensure an assessment is created for this subject.');
+        return;
+      }
+      
       const payload = students.map((stu: any) => ({
-        id: '', // Let backend generate or fill if needed
         eduNestId: stu.eduNestId,
-        assessmentId,
+        assessmentId: assessmentId,
+        assessmentName: selectedAssessment,
+        subjectName: selectedSubject,
         marksObtained: Number(marks[stu.eduNestId]),
+        maxMarks: maxMarksAllowed || 0,
         gradeAwarded: '',
         remarks: ''
       }));
-  const res = await fetch(`${import.meta.env.VITE_API_URL}/api/StudentMarks/bulk`, {
+      
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/StudentMarks/bulk`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -128,11 +206,12 @@ export default function UploadMarks() {
         },
         body: JSON.stringify(payload),
       });
+      
       if (res.ok) {
         setUploadResult('Marks uploaded successfully!');
       } else {
         const err = await res.json();
-        setUploadResult(err.message || 'Failed to upload marks.');
+        setUploadResult(`Failed to upload marks: ${err.title || err.message || 'Unknown error'}`);
       }
     } catch (err) {
       setUploadResult('Failed to upload marks.');
@@ -143,33 +222,37 @@ export default function UploadMarks() {
 
 
   return (
-    <div className="p-6 space-y-6 min-h-screen transition-colors">
-      {/* Gradient Header */}
-      <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl p-6 text-white mb-6">
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
-            <svg className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6l4 2" /></svg>
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 min-h-screen transition-colors">
+      {/* Gradient Header - Mobile Optimized */}
+      <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl sm:rounded-2xl p-4 sm:p-6 text-white mb-4 sm:mb-6">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <div className="p-2 sm:p-3 bg-white/20 rounded-lg sm:rounded-xl backdrop-blur-sm">
+            <svg className="h-6 w-6 sm:h-8 sm:w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6l4 2" /></svg>
           </div>
           <div>
-            <h1 className="text-3xl font-bold">Upload Marks</h1>
-            <p className="text-white/80">Select assessment and subject to upload marks</p>
+            <h1 className="text-2xl sm:text-3xl font-bold">Upload Marks</h1>
+            <p className="text-white/80 text-sm sm:text-base">Select assessment and subject to upload marks</p>
           </div>
         </div>
       </div>
       {/* Selection Card */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-indigo-700 dark:text-indigo-200">
-            <svg className="h-5 w-5 text-indigo-500 dark:text-indigo-200" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6l4 2" /></svg>
+          <CardTitle className="flex items-center gap-2 text-indigo-700 dark:text-indigo-200 text-lg sm:text-xl">
+            <svg className="h-4 w-4 sm:h-5 sm:w-5 text-indigo-500 dark:text-indigo-200" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6l4 2" /></svg>
             Select Assessment
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <Select
               value={selectedGrade}
               onValueChange={val => {
                 setSelectedGrade(val);
+                setSelectedSection("");
+                setSelectedAssessment("");
+                setSelectedSubject("");
+                setAvailableAssessmentNames([]);
                 setStudents([]);
                 setMarks({});
                 setUploadResult(null);
@@ -187,6 +270,8 @@ export default function UploadMarks() {
               value={selectedSection}
               onValueChange={val => {
                 setSelectedSection(val);
+                setSelectedAssessment("");
+                setSelectedSubject("");
                 setStudents([]);
                 setMarks({});
                 setUploadResult(null);
@@ -204,18 +289,20 @@ export default function UploadMarks() {
               value={selectedAssessment}
               onValueChange={val => {
                 setSelectedAssessment(val);
+                setSelectedSubject("");
                 setStudents([]);
                 setMarks({});
                 setUploadResult(null);
               }}
-              disabled={!selectedSection || !assessmentOptions.length}
+              disabled={!selectedSection || !availableAssessmentNames.length || loadingAssessmentNames}
             >
-              <SelectTrigger className="w-full bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"><SelectValue placeholder="Assessment" /></SelectTrigger>
+              <SelectTrigger className="w-full bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                <SelectValue placeholder={loadingAssessmentNames ? "Loading assessments..." : "Assessment"} />
+              </SelectTrigger>
               <SelectContent>
-                {assessmentOptions.map(assess => {
-                  const a = assess as any;
-                  return <SelectItem key={a.id} value={a.name}>{a.name}</SelectItem>;
-                })}
+                {availableAssessmentNames.map(assessmentName => (
+                  <SelectItem key={assessmentName} value={assessmentName}>{assessmentName}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Select
@@ -226,50 +313,121 @@ export default function UploadMarks() {
                 setMarks({});
                 setUploadResult(null);
               }}
-              disabled={!selectedAssessment || !subjectOptions.length}
+              disabled={!selectedAssessment || !availableSubjects.length}
             >
               <SelectTrigger className="w-full bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"><SelectValue placeholder="Subject" /></SelectTrigger>
               <SelectContent>
-                {subjectOptions.map(subject => (
-                  <SelectItem key={subject.id} value={subject.subjectName}>{subject.subjectName}</SelectItem>
+                {availableSubjects.map(subject => (
+                  <SelectItem key={subject.id} value={subject.name}>{subject.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           {typeof maxMarksAllowed === 'number' && selectedSubject && (
-            <div className="mb-2 text-sm text-gray-600 dark:text-gray-300">
-              Max Marks for <span className="font-semibold">{selectedSubject}</span>: <span className="font-semibold">{maxMarksAllowed}</span>
+            <div className="mb-2 text-sm text-gray-600 dark:text-gray-300 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+              Max Marks for <span className="font-semibold text-blue-700 dark:text-blue-300">{selectedSubject}</span>: <span className="font-semibold text-blue-700 dark:text-blue-300">{maxMarksAllowed}</span>
             </div>
           )}
-          <div className="grid grid-cols-1 md:grid-cols-1 gap-4 mt-4">
+          <div className="mt-4">
             <button
-              className="w-full px-4 py-2 rounded bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold shadow hover:from-indigo-600 hover:to-purple-700 transition"
+              className="w-full px-4 py-3 rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold shadow-lg hover:from-indigo-600 hover:to-purple-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={handleSearchStudents}
               disabled={
                 !selectedGrade ||
                 !selectedSection ||
                 !selectedAssessment ||
                 !selectedSubject ||
-                searching
+                searching ||
+                selectedAssessment === 'No assessment'
               }
             >
-              {searching ? 'Loading...' : 'Show Students'}
+              {searching ? (
+                <div className="flex items-center justify-center space-x-2">
+                  <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                  <span>Loading Students...</span>
+                </div>
+              ) : selectedAssessment === 'No assessment' ? (
+                'No Assessment Available'
+              ) : (
+                'Show Students'
+              )}
             </button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Students Table with marks entry */}
+      {/* Students Table with marks entry - Mobile Optimized */}
       {students.length > 0 && (
-        <Card className="bg-white dark:bg-gray-900 shadow border border-gray-200 dark:border-gray-800 max-w-4xl mx-auto">
+        <Card className="bg-white dark:bg-gray-900 shadow border border-gray-200 dark:border-gray-800 w-full">
           <CardHeader>
-            <CardTitle className="text-indigo-700 dark:text-indigo-200">Enter Marks for {selectedSubject} ({selectedAssessment})</CardTitle>
+            <CardTitle className="text-indigo-700 dark:text-indigo-200 text-lg sm:text-xl">
+              Enter Marks for {selectedSubject} ({selectedAssessment})
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {typeof maxMarksAllowed === 'number' && (
-              <div className="mb-4 text-sm text-gray-600 dark:text-gray-300">Max Marks for <span className="font-semibold">{selectedSubject}</span>: <span className="font-semibold">{maxMarksAllowed}</span></div>
+              <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                <span className="text-sm text-blue-700 dark:text-blue-300">
+                  Max Marks for <span className="font-semibold">{selectedSubject}</span>: <span className="font-semibold">{maxMarksAllowed}</span>
+                </span>
+              </div>
             )}
-            <div className="overflow-x-auto">
+            
+            {/* Mobile Card Layout */}
+            <div className="block sm:hidden space-y-3">
+              {students.map((stu: any) => (
+                <div key={stu.eduNestId} className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-medium text-gray-500 uppercase">ID:</span>
+                      <span className="font-medium">{stu.eduNestId}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Name:</span>
+                      <span className="font-medium">{stu.firstName} {stu.lastName}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Subject:</span>
+                      <span>{selectedSubject}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Marks:</span>
+                      <div className="flex flex-col items-end">
+                        <input
+                          type="number"
+                          className={`w-20 px-2 py-1 border rounded bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-center ${
+                            marks[stu.eduNestId] && (
+                              isNaN(Number(marks[stu.eduNestId])) ||
+                              Number(marks[stu.eduNestId]) > (typeof maxMarksAllowed === 'number' ? maxMarksAllowed : Infinity)
+                            ) ? 'border-red-500' : ''
+                          }`}
+                          value={marks[stu.eduNestId] ?? ''}
+                          onChange={e => {
+                            const val = e.target.value;
+                            if (val === '' || (!isNaN(Number(val)) && Number(val) <= (typeof maxMarksAllowed === 'number' ? maxMarksAllowed : Infinity))) {
+                              handleMarkChange(stu.eduNestId, val);
+                            } else if (Number(val) > (typeof maxMarksAllowed === 'number' ? maxMarksAllowed : Infinity)) {
+                              handleMarkChange(stu.eduNestId, String(maxMarksAllowed));
+                            }
+                          }}
+                          min="0"
+                          step="0.01"
+                          max={typeof maxMarksAllowed === 'number' ? maxMarksAllowed : undefined}
+                        />
+                        {marks[stu.eduNestId] && (
+                          (isNaN(Number(marks[stu.eduNestId])) || Number(marks[stu.eduNestId]) > (typeof maxMarksAllowed === 'number' ? maxMarksAllowed : Infinity)) && (
+                            <div className="text-xs text-red-600 mt-1">Enter ≤ {maxMarksAllowed}</div>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Table Layout */}
+            <div className="hidden sm:block overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
                 <thead className="bg-gray-100 dark:bg-gray-800">
                   <tr>
@@ -319,18 +477,46 @@ export default function UploadMarks() {
                 </tbody>
               </table>
             </div>
-            {/* Upload button only if all marks filled */}
-            {allMarksFilled && (
+            {/* Upload button only if all marks filled and not "No assessment" */}
+            {allMarksFilled && selectedAssessment !== 'No assessment' && (
               <button
-                className="mt-6 w-full px-4 py-2 rounded bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold shadow hover:from-indigo-600 hover:to-purple-700 transition"
+                className="mt-6 w-full px-4 py-3 rounded-lg bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold shadow-lg hover:from-green-600 hover:to-green-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleUploadMarks}
                 disabled={uploading}
               >
-                {uploading ? 'Uploading...' : 'Upload Marks'}
+                {uploading ? (
+                  <div className="flex items-center justify-center space-x-2">
+                    <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                    <span>Uploading...</span>
+                  </div>
+                ) : (
+                  'Upload Marks'
+                )}
               </button>
             )}
+            
+            {/* Show message when "No assessment" is selected */}
+            {selectedAssessment === 'No assessment' && (
+              <div className="mt-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <svg className="h-5 w-5 text-yellow-600 dark:text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 15.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                  <span className="text-yellow-800 dark:text-yellow-200 font-medium">
+                    No assessments available for this grade and section combination.
+                  </span>
+                </div>
+              </div>
+            )}
+            
             {uploadResult && (
-              <div className={`mt-4 text-center font-semibold ${uploadResult.includes('success') ? 'text-green-600' : 'text-red-600'}`}>{uploadResult}</div>
+              <div className={`mt-4 p-3 rounded-lg text-center font-semibold ${
+                uploadResult.includes('success') 
+                  ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-800' 
+                  : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800'
+              }`}>
+                {uploadResult}
+              </div>
             )}
           </CardContent>
         </Card>

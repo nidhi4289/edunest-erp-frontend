@@ -16,6 +16,7 @@ import axios from "axios";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +38,9 @@ import {
 } from 'recharts';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
+import { Capacitor } from '@capacitor/core';
 // import { api } from "@/services/api"; // Commented out since backend not present
 
 interface Student {
@@ -94,6 +98,7 @@ interface SearchCriteria {
   firstName: string;
   lastName: string;
   grade: string;
+  section: string;
 }
 
 // ...existing code...
@@ -101,14 +106,15 @@ interface SearchCriteria {
 export default function StudentDetails() {
 
   // All state declarations first
-  const { token } = useAuth();
+  const { token, masterDataClasses } = useAuth();
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("profile");
   const [searchCriteria, setSearchCriteria] = useState<SearchCriteria>({
     firstName: "",
     lastName: "",
-    grade: ""
+    grade: "",
+    section: ""
   });
   const [searchResults, setSearchResults] = useState<Student[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
@@ -123,6 +129,10 @@ export default function StudentDetails() {
   const [openRemarkModal, setOpenRemarkModal] = useState<string | null>(null);
   const [teacherRemark, setTeacherRemark] = useState("");
   const [pendingMarksheet, setPendingMarksheet] = useState<any>(null);
+
+  // Get valid grades and sections from master data
+  const validGrades = [...new Set(masterDataClasses.map(cls => String(cls.grade)))];
+  const validSections = [...new Set(masterDataClasses.map(cls => String(cls.section)))];
 
   // Attendance fetching effect (must be after activeTab and selectedStudent are declared)
   useEffect(() => {
@@ -437,7 +447,177 @@ export default function StudentDetails() {
       const footerText = `Report generated on ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })} | ${import.meta.env.VITE_SCHOOL_SYSTEM_NAME || 'EduNest School Management System'}`;
       pdf.text(footerText, pageWidth / 2, pageHeight - 10, { align: 'center' });
       const fileName = `${selectedStudent.firstName}_${selectedStudent.lastName}_${pendingMarksheet.term.replace(/\s+/g, '_')}_${pendingMarksheet.academicYear.replace('/', '-')}_ReportCard.pdf`;
-      pdf.save(fileName);
+      
+      // Handle PDF download/sharing based on platform
+      if (Capacitor.isNativePlatform()) {
+        // Mobile platform - save to filesystem and share
+        const pdfBase64 = pdf.output('datauristring').split(',')[1];
+        
+        try {
+          const result = await Filesystem.writeFile({
+            path: fileName,
+            data: pdfBase64,
+            directory: Directory.Cache,
+            encoding: Encoding.UTF8
+          });
+          
+          // Share the PDF file
+          await Share.share({
+            title: 'Report Card',
+            text: `Report Card for ${selectedStudent.firstName} ${selectedStudent.lastName}`,
+            url: result.uri,
+            dialogTitle: 'Share Report Card'
+          });
+          
+          alert('Report card generated and ready to share!');
+        } catch (shareError) {
+          console.error('Error sharing PDF:', shareError);
+          // Fallback: try to open in browser
+          const pdfBlob = pdf.output('blob');
+          const pdfUrl = URL.createObjectURL(pdfBlob);
+          window.open(pdfUrl, '_blank');
+          alert('Report card generated! Check your downloads or browser.');
+        }
+      } else {
+        // Web platform - display PDF in new tab with print/save options
+        const pdfBlob = pdf.output('blob');
+        const pdfUrl = URL.createObjectURL(pdfBlob);
+        
+        // Open PDF in new tab
+        const newTab = window.open('', '_blank');
+        if (newTab) {
+          newTab.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <title>Report Card - ${selectedStudent.firstName} ${selectedStudent.lastName}</title>
+              <style>
+                body {
+                  margin: 0;
+                  padding: 0;
+                  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                  background: #f5f5f5;
+                }
+                .header {
+                  background: #4F46E5;
+                  color: white;
+                  padding: 16px 24px;
+                  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                }
+                .title {
+                  font-size: 18px;
+                  font-weight: 600;
+                  margin: 0;
+                }
+                .actions {
+                  display: flex;
+                  gap: 12px;
+                }
+                .btn {
+                  background: white;
+                  color: #4F46E5;
+                  border: 2px solid white;
+                  padding: 8px 16px;
+                  border-radius: 8px;
+                  cursor: pointer;
+                  font-weight: 500;
+                  text-decoration: none;
+                  display: inline-flex;
+                  align-items: center;
+                  gap: 6px;
+                  transition: all 0.2s;
+                }
+                .btn:hover {
+                  background: #f8fafc;
+                  transform: translateY(-1px);
+                }
+                .pdf-container {
+                  width: 100%;
+                  height: calc(100vh - 80px);
+                  border: none;
+                }
+                .mobile-actions {
+                  display: none;
+                  padding: 16px;
+                  background: white;
+                  border-bottom: 1px solid #e5e7eb;
+                  text-align: center;
+                }
+                @media (max-width: 768px) {
+                  .actions { display: none; }
+                  .mobile-actions { display: block; }
+                  .pdf-container { height: calc(100vh - 140px); }
+                }
+                .mobile-btn {
+                  background: #4F46E5;
+                  color: white;
+                  border: none;
+                  padding: 12px 24px;
+                  border-radius: 8px;
+                  cursor: pointer;
+                  font-weight: 500;
+                  margin: 0 8px;
+                  font-size: 14px;
+                }
+              </style>
+            </head>
+            <body>
+              <div class="header">
+                <h1 class="title">Report Card - ${selectedStudent.firstName} ${selectedStudent.lastName}</h1>
+                <div class="actions">
+                  <button class="btn" onclick="window.print()">
+                    🖨️ Print
+                  </button>
+                  <a class="btn" href="${pdfUrl}" download="${fileName}">
+                    💾 Save
+                  </a>
+                  <button class="btn" onclick="window.close()">
+                    ✕ Close
+                  </button>
+                </div>
+              </div>
+              <div class="mobile-actions">
+                <button class="mobile-btn" onclick="window.print()">🖨️ Print</button>
+                <button class="mobile-btn" onclick="downloadPDF()">💾 Save</button>
+                <button class="mobile-btn" onclick="window.close()">✕ Close</button>
+              </div>
+              <iframe class="pdf-container" src="${pdfUrl}" type="application/pdf"></iframe>
+              <script>
+                function downloadPDF() {
+                  const a = document.createElement('a');
+                  a.href = '${pdfUrl}';
+                  a.download = '${fileName}';
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                }
+                
+                // Clean up blob URL when window closes
+                window.addEventListener('beforeunload', function() {
+                  URL.revokeObjectURL('${pdfUrl}');
+                });
+                
+                // Auto-focus for better UX
+                window.focus();
+              </script>
+            </body>
+            </html>
+          `);
+          newTab.document.close();
+        } else {
+          // Fallback if popup blocked - direct download
+          const a = document.createElement('a');
+          a.href = pdfUrl;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(pdfUrl);
+        }
+      }
     } catch (error) {
       console.error('Error generating PDF:', error);
       alert(`Failed to generate PDF: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
@@ -456,6 +636,7 @@ export default function StudentDetails() {
       if (searchCriteria.firstName) params.append("firstName", searchCriteria.firstName);
       if (searchCriteria.lastName) params.append("lastName", searchCriteria.lastName);
       if (searchCriteria.grade) params.append("grade", searchCriteria.grade);
+      if (searchCriteria.section) params.append("section", searchCriteria.section);
   const response = await axios.get(`${import.meta.env.VITE_API_URL}/Students?${params.toString()}`,
         token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
       );
@@ -611,7 +792,7 @@ export default function StudentDetails() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <div>
               <label className="text-sm font-medium text-gray-600 mb-1 block">First Name</label>
               <Input
@@ -636,14 +817,41 @@ export default function StudentDetails() {
             </div>
             <div>
               <label className="text-sm font-medium text-gray-600 mb-1 block">Grade</label>
-              <Input
-                placeholder="Enter grade"
+              <Select
                 value={searchCriteria.grade}
-                onChange={(e) => setSearchCriteria(prev => ({
+                onValueChange={(value) => setSearchCriteria(prev => ({
                   ...prev,
-                  grade: e.target.value
+                  grade: value
                 }))}
-              />
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select grade" />
+                </SelectTrigger>
+                <SelectContent>
+                  {validGrades.map(grade => (
+                    <SelectItem key={grade} value={grade}>{grade}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-600 mb-1 block">Section</label>
+              <Select
+                value={searchCriteria.section}
+                onValueChange={(value) => setSearchCriteria(prev => ({
+                  ...prev,
+                  section: value
+                }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select section" />
+                </SelectTrigger>
+                <SelectContent>
+                  {validSections.map(section => (
+                    <SelectItem key={section} value={section}>{section}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           
@@ -713,17 +921,21 @@ export default function StudentDetails() {
             </Card>
           ) : (
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="profile">Profile</TabsTrigger>
-                <TabsTrigger value="academics">Academic Records</TabsTrigger>
-                <TabsTrigger value="growth">Growth Analysis</TabsTrigger>
-                <TabsTrigger value="attendance">Attendance</TabsTrigger>
-              {/* Attendance Tab */}
-              <TabsContent value="attendance">
-                <div className="py-12 text-center text-gray-500 text-lg">
-                  No attendance records found.
-                </div>
-              </TabsContent>
+              <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto gap-1 p-1">
+                <TabsTrigger value="profile" className="text-xs sm:text-sm py-2 px-1 sm:px-3">
+                  Profile
+                </TabsTrigger>
+                <TabsTrigger value="academics" className="text-xs sm:text-sm py-2 px-1 sm:px-3">
+                  <span className="hidden sm:inline">Academic Records</span>
+                  <span className="sm:hidden">Academics</span>
+                </TabsTrigger>
+                <TabsTrigger value="growth" className="text-xs sm:text-sm py-2 px-1 sm:px-3">
+                  <span className="hidden sm:inline">Growth Analysis</span>
+                  <span className="sm:hidden">Growth</span>
+                </TabsTrigger>
+                <TabsTrigger value="attendance" className="text-xs sm:text-sm py-2 px-1 sm:px-3">
+                  Attendance
+                </TabsTrigger>
               </TabsList>
 
               {/* Profile Tab */}

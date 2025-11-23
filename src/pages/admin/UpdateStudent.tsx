@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Edit, Search, Save, User, ChevronLeft, ChevronRight, CheckCircle, AlertCircle } from "lucide-react";
@@ -38,6 +39,7 @@ interface SearchCriteria {
   firstName: string;
   lastName: string;
   grade: string;
+  section: string;
 }
 
 interface EditableFields {
@@ -74,10 +76,12 @@ interface ResultDialogState {
 
 export default function UpdateStudent() {
   const { token, masterDataClasses } = useAuth();
+  
   const [searchCriteria, setSearchCriteria] = useState<SearchCriteria>({
     firstName: "",
     lastName: "",
-    grade: ""
+    grade: "",
+    section: ""
   });
   
   const [searchResults, setSearchResults] = useState<Student[]>([]);
@@ -147,8 +151,11 @@ export default function UpdateStudent() {
       if (searchCriteria.lastName.trim()) {
         params.append('lastName', searchCriteria.lastName.trim());
       }
-      if (searchCriteria.grade.trim()) {
+      if (searchCriteria.grade && searchCriteria.grade.trim()) {
         params.append('grade', searchCriteria.grade.trim());
+      }
+      if (searchCriteria.section && searchCriteria.section.trim()) {
+        params.append('section', searchCriteria.section.trim());
       }
 
       // Backend API call
@@ -349,34 +356,46 @@ export default function UpdateStudent() {
         
         {isEditable ? (
           fieldName === 'grade' ? (
-            <select
+            <Select
               value={value}
-              onChange={(e) => handleFieldChange(fieldName, e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              onValueChange={(newValue) => handleFieldChange(fieldName, newValue)}
             >
-              {validGrades.map(grade => (
-                <option key={grade} value={grade}>{grade}</option>
-              ))}
-            </select>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select grade" />
+              </SelectTrigger>
+              <SelectContent>
+                {validGrades.map(grade => (
+                  <SelectItem key={grade} value={grade}>{grade}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           ) : fieldName === 'section' ? (
-            <select
+            <Select
               value={value}
-              onChange={(e) => handleFieldChange(fieldName, e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              onValueChange={(newValue) => handleFieldChange(fieldName, newValue)}
             >
-              {validSections.map(section => (
-                <option key={section} value={section}>{section}</option>
-              ))}
-            </select>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select section" />
+              </SelectTrigger>
+              <SelectContent>
+                {validSections.map(section => (
+                  <SelectItem key={section} value={section}>{section}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           ) : fieldName === 'status' ? (
-            <select
+            <Select
               value={value}
-              onChange={(e) => handleFieldChange(fieldName, e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              onValueChange={(newValue) => handleFieldChange(fieldName, newValue)}
             >
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
-            </select>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Active">Active</SelectItem>
+                <SelectItem value="Inactive">Inactive</SelectItem>
+              </SelectContent>
+            </Select>
           ) : (
             <Input
               value={value}
@@ -409,16 +428,16 @@ export default function UpdateStudent() {
   );
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl p-6 text-white">
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
-            <User className="h-8 w-8" />
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
+      {/* Header - Mobile Optimized */}
+      <div className="bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl sm:rounded-2xl p-4 sm:p-6 text-white">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <div className="p-2 sm:p-3 bg-white/20 rounded-lg sm:rounded-xl backdrop-blur-sm">
+            <User className="h-6 w-6 sm:h-8 sm:w-8" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold">Update Student</h1>
-            <p className="text-white/80">Search and update student information</p>
+            <h1 className="text-2xl sm:text-3xl font-bold">Update Student</h1>
+            <p className="text-white/80 text-sm sm:text-base">Search and update student information</p>
           </div>
         </div>
       </div>
@@ -426,13 +445,13 @@ export default function UpdateStudent() {
       {/* Search Section */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Search className="h-5 w-5" />
+          <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+            <Search className="h-4 w-4 sm:h-5 sm:w-5" />
             Search Students
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <div>
               <label className="text-sm font-medium text-gray-600 mb-1 block">First Name</label>
               <Input
@@ -457,27 +476,61 @@ export default function UpdateStudent() {
             </div>
             <div>
               <label className="text-sm font-medium text-gray-600 mb-1 block">Grade</label>
-              <Input
-                placeholder="Enter grade"
+              <Select
                 value={searchCriteria.grade}
-                onChange={(e) => setSearchCriteria(prev => ({
+                onValueChange={(value) => setSearchCriteria(prev => ({
                   ...prev,
-                  grade: e.target.value
+                  grade: value
                 }))}
-              />
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select grade" />
+                </SelectTrigger>
+                <SelectContent>
+                  {validGrades.map(grade => (
+                    <SelectItem key={grade} value={grade}>{grade}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-600 mb-1 block">Section</label>
+              <Select
+                value={searchCriteria.section}
+                onValueChange={(value) => setSearchCriteria(prev => ({
+                  ...prev,
+                  section: value
+                }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select section" />
+                </SelectTrigger>
+                <SelectContent>
+                  {validSections.map(section => (
+                    <SelectItem key={section} value={section}>{section}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0">
             <p className="text-sm text-gray-500">
               * At least one search field is required
             </p>
             <Button 
               onClick={handleSearch}
               disabled={searching}
-              className="bg-gradient-to-r from-blue-500 to-purple-600"
+              className="bg-gradient-to-r from-blue-500 to-purple-600 w-full sm:w-auto"
             >
-              {searching ? "Searching..." : "Search Students"}
+              {searching ? (
+                <div className="flex items-center space-x-2">
+                  <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                  <span>Searching...</span>
+                </div>
+              ) : (
+                "Search Students"
+              )}
             </Button>
           </div>
         </CardContent>
@@ -491,48 +544,50 @@ export default function UpdateStudent() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Student ID</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Grade</TableHead>
-                    <TableHead>Section</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paginatedResults.map((student) => (
-                    <TableRow 
-                      key={student.eduNestId}
-                      className={selectedStudent?.eduNestId === student.eduNestId ? "bg-blue-50" : ""}
-                    >
-                      <TableCell className="font-medium">{student.eduNestId}</TableCell>
-                      <TableCell>{student.firstName} {student.lastName}</TableCell>
-                      <TableCell>{student.grade}</TableCell>
-                      <TableCell>{student.section}</TableCell>
-                      <TableCell>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          student.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {student.status}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant={selectedStudent?.eduNestId === student.eduNestId ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => handleStudentSelect(student)}
-                          className={selectedStudent?.eduNestId === student.eduNestId ? "bg-blue-600 hover:bg-blue-700" : ""}
-                        >
-                          {selectedStudent?.eduNestId === student.eduNestId ? "Selected" : "Select"}
-                        </Button>
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Student ID</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Grade</TableHead>
+                      <TableHead>Section</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Action</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedResults.map((student) => (
+                      <TableRow 
+                        key={student.eduNestId}
+                        className={selectedStudent?.eduNestId === student.eduNestId ? "bg-blue-50" : ""}
+                      >
+                        <TableCell className="font-medium">{student.eduNestId}</TableCell>
+                        <TableCell>{student.firstName} {student.lastName}</TableCell>
+                        <TableCell>{student.grade}</TableCell>
+                        <TableCell>{student.section}</TableCell>
+                        <TableCell>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            student.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {student.status}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant={selectedStudent?.eduNestId === student.eduNestId ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => handleStudentSelect(student)}
+                            className={selectedStudent?.eduNestId === student.eduNestId ? "bg-blue-600 hover:bg-blue-700" : ""}
+                          >
+                            {selectedStudent?.eduNestId === student.eduNestId ? "Selected" : "Select"}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
 
               {/* Pagination */}
               {totalPages > 1 && (
@@ -574,21 +629,28 @@ export default function UpdateStudent() {
       {selectedStudent && editedStudent && (
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Student Details - {selectedStudent.firstName} {selectedStudent.lastName}</CardTitle>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0">
+              <CardTitle className="text-lg sm:text-xl">Student Details - {selectedStudent.firstName} {selectedStudent.lastName}</CardTitle>
               <Button
                 onClick={handleSave}
                 disabled={updating || Object.values(editableFields).every(v => !v)}
-                className="bg-gradient-to-r from-green-500 to-blue-600"
+                className="bg-gradient-to-r from-green-500 to-blue-600 w-full sm:w-auto"
               >
                 <Save className="h-4 w-4 mr-2" />
-                {updating ? "Saving..." : "Save Changes"}
+                {updating ? (
+                  <div className="flex items-center space-x-2">
+                    <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                    <span>Saving...</span>
+                  </div>
+                ) : (
+                  "Save Changes"
+                )}
               </Button>
             </div>
           </CardHeader>
           <CardContent>
             <div className="space-y-4 mt-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 {/* Non-editable fields */}
                 {renderEditableField("Student ID", "eduNestId", editedStudent.eduNestId, false)}
                 {renderEditableField("First Name", "firstName", editedStudent.firstName, false)}

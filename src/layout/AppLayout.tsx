@@ -15,6 +15,7 @@ import {
   DropdownMenuSeparator, 
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
+import { NotificationBadge } from "@/components/NotificationBadge";
 import { useBrand } from "@/theme/BrandProvider";
 import { useAuth } from "@/context/AuthContext";
 
@@ -49,7 +50,8 @@ function Sidebar({
   
   // Student nav: My Details as child under Student parent if role is Student
   const studentItems = [
-    { to: "/student/my-details", label: "My Details", icon: BookOpen, end: false },
+    { to: "/student/my-details", label: "My Details", icon: User, end: false },
+    { to: "/student/assigned-work", label: "Assigned Work", icon: BookOpen, end: false },
   ];
   const [studentExpanded, setStudentExpanded] = useState(false);
 
@@ -89,14 +91,18 @@ function Sidebar({
       {/* Backdrop for mobile */}
       {open && (
         <div 
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden" 
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden touch-manipulation" 
           onClick={onClose}
+          onTouchStart={(e) => {
+            // Prevent scrolling when backdrop is touched
+            e.preventDefault();
+          }}
         />
       )}
       
       {/* Sidebar */}
       <aside 
-        className={`fixed top-0 left-0 z-50 h-full w-64 bg-white border-r border-neutral-200 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
+        className={`fixed top-0 left-0 z-[55] h-full w-64 bg-white border-r border-neutral-200 transform transition-transform duration-300 ease-in-out lg:translate-x-0 touch-manipulation ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -105,21 +111,31 @@ function Sidebar({
           <div className="flex items-center justify-between">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="flex items-center gap-3 h-auto p-2 hover:bg-gray-50">
+                <Button 
+                  variant="ghost" 
+                  className="flex items-center gap-3 h-auto p-3 hover:bg-gray-50 focus:bg-gray-50 active:bg-gray-100 min-h-[48px] w-full touch-manipulation relative z-50"
+                >
                   <div 
                     className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold"
                     style={{ backgroundColor: brand }}
                   >
                     <User className="h-4 w-4" />
                   </div>
-                  <div className="text-left">
+                  <div className="text-left flex-1">
                     <div className="font-semibold text-sm">Profile</div>
                     <div className="text-xs text-gray-500 capitalize">{userRole}</div>
                   </div>
-                  <ChevronDown className="h-4 w-4 text-gray-400" />
+                  <ChevronDown className="h-4 w-4 text-gray-400 flex-shrink-0" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56">
+              <DropdownMenuContent 
+                align="start" 
+                className="w-56 touch-manipulation relative z-[60]"
+                sideOffset={8}
+                avoidCollisions={true}
+                side="bottom"
+                alignOffset={0}
+              >
                 <DropdownMenuLabel>My Account</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <div className="px-2 py-1.5 text-sm">
@@ -127,20 +143,28 @@ function Sidebar({
                   <div className="text-gray-500 capitalize">Role: {userRole}</div>
                 </div>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-600">
+                <DropdownMenuItem 
+                  onClick={handleLogout} 
+                  className="text-red-600 focus:text-red-600 focus:bg-red-50 active:bg-red-100 min-h-[48px] touch-manipulation cursor-pointer relative z-[60]"
+                >
                   <LogOut className="mr-2 h-4 w-4" />
                   Logout
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onClose}
-              className="lg:hidden"
-            >
-              <X className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-2">
+              <div className="hidden lg:block">
+                <NotificationBadge />
+              </div>
+              <Button
+                variant="ghost"
+                size="lg"
+                onClick={onClose}
+                className="lg:hidden p-2 h-auto min-h-[44px] min-w-[44px] touch-manipulation active:bg-gray-100 focus:bg-gray-100"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -380,15 +404,20 @@ export default function AppLayout() {
       />
       
       <div className="lg:ml-64">
-        {/* Top bar for mobile */}
-        <header className="lg:hidden bg-white border-b border-neutral-200 p-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setSidebarOpen(true)}
-          >
-            <Menu className="h-5 w-5" />
-          </Button>
+        {/* Top bar for mobile with safe area handling */}
+        <header className="lg:hidden bg-white border-b border-neutral-200 mobile-safe-top px-4 pb-4 flex items-center justify-between sticky top-0 z-30">
+          <div className="flex items-center">
+            <Button
+              variant="ghost"
+              size="lg"
+              onClick={() => setSidebarOpen(true)}
+              className="p-4 h-auto min-h-[52px] min-w-[52px] touch-manipulation active:bg-gray-100 focus:bg-gray-100 relative z-40 -ml-1"
+            >
+              <Menu className="h-7 w-7" />
+            </Button>
+            <h1 className="ml-3 text-lg font-semibold text-gray-900">EduNest ERP</h1>
+          </div>
+          <NotificationBadge />
         </header>
 
         {/* Main content */}

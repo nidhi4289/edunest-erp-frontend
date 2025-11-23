@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { UserPlus, Download, Upload, FileSpreadsheet, AlertCircle, CheckCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import * as XLSX from 'xlsx';
@@ -14,16 +15,28 @@ import { toProperCase } from "@/lib/utils";
 const toCamelCase = (text: string): string => {
   if (!text || typeof text !== 'string') return text;
   
-  return text
-    .toLowerCase()
-    .split(' ')
-    .map((word, index) => {
-      if (index === 0) {
-        return word;
-      }
+  // Split by spaces and process each word
+  const words = text.toLowerCase().split(' ');
+  
+  return words.map((word, index) => {
+    if (index === 0) {
+      // First word stays lowercase
+      return word;
+    }
+    
+    // For subsequent words, handle apostrophes properly
+    if (word.includes("'")) {
+      // Split by apostrophe and capitalize appropriately
+      const parts = word.split("'");
+      return parts.map((part, partIndex) => {
+        if (part.length === 0) return part;
+        return part.charAt(0).toUpperCase() + part.slice(1);
+      }).join("'");
+    } else {
+      // Normal word without apostrophe
       return word.charAt(0).toUpperCase() + word.slice(1);
-    })
-    .join('');
+    }
+  }).join('');
 };
 
 // Helper function to validate alphabetic names (allows spaces, hyphens, apostrophes)
@@ -99,6 +112,9 @@ export default function AddBulkStudents() {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
+  const [showTimer, setShowTimer] = useState(false);
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const [timerInterval, setTimerInterval] = useState<number | null>(null);
   const [previewData, setPreviewData] = useState<StudentData[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const { token, masterDataClasses } = useAuth();
@@ -106,6 +122,31 @@ export default function AddBulkStudents() {
   // Get valid grades and sections from master data
   const validGrades = [...new Set(masterDataClasses.map(cls => String(cls.grade)))];
   const validSections = [...new Set(masterDataClasses.map(cls => String(cls.section)))];
+
+  // Timer functions
+  const startTimer = () => {
+    setElapsedTime(0);
+    setShowTimer(true);
+    const interval = setInterval(() => {
+      setElapsedTime(prev => prev + 1);
+    }, 1000);
+    setTimerInterval(interval);
+  };
+
+  const stopTimer = () => {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      setTimerInterval(null);
+    }
+    setShowTimer(false);
+    setElapsedTime(0);
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
   
   // Function to validate if a grade-section combination exists
   const isValidGradeSectionCombination = (grade: string, section: string): boolean => {
@@ -354,6 +395,7 @@ export default function AddBulkStudents() {
     if (!file || previewData.length === 0) return;
 
     setUploading(true);
+    startTimer();
     
     try {
       // Validate data before upload
@@ -454,17 +496,14 @@ export default function AddBulkStudents() {
       // Prepare data for backend - add eduNestId and format dates
       const studentsForBackend = previewData.map(student => ({
         eduNestId: "", // Backend will generate this
-        firstName: toCamelCase(student.firstName.trim()),
-        lastName: toCamelCase(student.lastName.trim()),
+        firstName: student.firstName.trim(), // Keep proper case for names with apostrophes like O'Connor\n        lastName: student.lastName.trim(), // Keep proper case for names with apostrophes like D'Souza
         dateOfBirth: student.dateOfBirth ? (() => {
           const [day, month, year] = student.dateOfBirth.split('-');
           // Create date in UTC to avoid timezone issues
           const utcDate = new Date(Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day)));
           return utcDate.toISOString(); // Returns UTC format: YYYY-MM-DDTHH:mm:ss.sssZ
         })() : null,
-        fatherName: toCamelCase(student.fatherName.trim()),
-        fatherEmail: student.fatherEmail ? student.fatherEmail.trim() : '',
-        motherName: toCamelCase(student.motherName.trim()),
+        fatherName: student.fatherName.trim(), // Keep proper case for names with apostrophes like O'Connor\n        fatherEmail: student.fatherEmail ? student.fatherEmail.trim() : '',\n        motherName: student.motherName.trim(), // Keep proper case for names with apostrophes like D'Souza
         motherEmail: student.motherEmail ? student.motherEmail.trim() : '',
         grade: String(student.grade).trim(),
         section: String(student.section).trim(),
@@ -482,11 +521,13 @@ export default function AddBulkStudents() {
       }));
 
   // Backend API call
-  const response = await api.post(`${import.meta.env.VITE_API_URL}/Students/bulk-add`, studentsForBackend, {
+  // Upload to backend with extended timeout for bulk operations
+      const response = await api.post(`${import.meta.env.VITE_API_URL}/Students/bulk-add`, studentsForBackend, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
-        }
+        },
+        timeout: 300000 // 5 minutes timeout for bulk operations
       });
       
       // Handle successful response
@@ -533,6 +574,7 @@ export default function AddBulkStudents() {
       });
     } finally {
       setUploading(false);
+      stopTimer();
     }
   };
 
@@ -737,6 +779,18 @@ export default function AddBulkStudents() {
           {showPreview && previewData.length > 0 && (
             <div className="space-y-4">
               <h3 className="font-semibold">Preview ({previewData.length} students):</h3>
+              {previewData.length > 50 && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-yellow-800">
+                    <AlertCircle className="h-4 w-4" />
+                    <span className="font-medium">Large Upload Notice</span>
+                  </div>
+                  <p className="text-sm text-yellow-700 mt-1">
+                    You're uploading {previewData.length} students. Large uploads may take several minutes to process. 
+                    Please don't close the browser or navigate away during upload.
+                  </p>
+                </div>
+              )}
               <div className="max-h-64 overflow-auto border rounded-lg">
                 <Table>
                   <TableHeader>
@@ -788,7 +842,14 @@ export default function AddBulkStudents() {
             disabled={!file || uploading || previewData.length === 0}
             className="w-full bg-gradient-to-r from-blue-500 to-purple-600"
           >
-            {uploading ? "Uploading..." : `Upload ${previewData.length} Students`}
+            {uploading ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Uploading {previewData.length} students... This may take a few minutes
+              </>
+            ) : (
+              `Upload ${previewData.length} Students`
+            )}
           </Button>
         </CardContent>
       </Card>
@@ -855,6 +916,35 @@ export default function AddBulkStudents() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Upload Timer Dialog */}
+      <Dialog open={showTimer} onOpenChange={() => {}}>
+        <DialogContent className="sm:max-w-md" onPointerDownOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-blue-600">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+              Uploading Students
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-6 text-center">
+            <div className="space-y-4">
+              <div className="text-6xl font-mono font-bold text-blue-600">
+                {formatTime(elapsedTime)}
+              </div>
+              <div className="space-y-2">
+                <p className="text-lg font-medium">Processing {previewData.length} students...</p>
+                <p className="text-sm text-gray-600">
+                  Please wait while we process your upload. This may take several minutes for large files.
+                </p>
+                <div className="flex items-center justify-center gap-2 text-sm text-yellow-600 bg-yellow-50 p-3 rounded-lg">
+                  <AlertCircle className="h-4 w-4" />
+                  <span>Do not close this window or navigate away</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

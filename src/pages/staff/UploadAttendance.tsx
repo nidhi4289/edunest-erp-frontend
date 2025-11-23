@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Clock, Download, Upload, FileSpreadsheet, AlertCircle, CheckCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +13,7 @@ import * as XLSX from 'xlsx';
 import { api } from "@/services/api";
 import { useAuth } from "@/context/AuthContext";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
+import { isHoliday, getHolidayName } from '../../config/holidayConfig';
 
 interface ClassData {
   id: string;
@@ -46,6 +48,54 @@ interface UploadResult {
   errors?: string[];
 }
 
+interface ResultDialogState {
+  open: boolean;
+  title: string;
+  message: string;
+  type: 'success' | 'error';
+}
+
+// Holiday validation using configuration file
+
+// Validation functions
+const isWeekend = (date: string): boolean => {
+  const dayOfWeek = new Date(date).getDay();
+  return dayOfWeek === 0 || dayOfWeek === 6; // Sunday = 0, Saturday = 6
+};
+
+const isFutureDate = (date: string): boolean => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // Reset time to start of day
+  const selectedDate = new Date(date);
+  selectedDate.setHours(0, 0, 0, 0); // Reset time to start of day for selected date
+  return selectedDate > today; // Only future dates are invalid, current date is allowed
+};
+
+const isSchoolHoliday = (date: string): boolean => {
+  return isHoliday(date);
+};
+
+const validateAttendanceDate = (date: string): { isValid: boolean; message: string } => {
+  if (!date) {
+    return { isValid: false, message: 'Please select a date.' };
+  }
+  
+  if (isFutureDate(date)) {
+    return { isValid: false, message: 'Cannot take attendance for future dates.' };
+  }
+  
+  if (isWeekend(date)) {
+    return { isValid: false, message: 'Cannot take attendance on weekends (Saturday/Sunday).' };
+  }
+  
+  if (isSchoolHoliday(date)) {
+    const holidayName = getHolidayName(date) || 'school holiday';
+    return { isValid: false, message: `Cannot take attendance on ${holidayName}.` };
+  }
+  
+  return { isValid: true, message: '' };
+};
+
 export default function UploadAttendance() {
   // ...existing code for state and handlers...
 
@@ -53,18 +103,43 @@ export default function UploadAttendance() {
   const [students, setStudents] = useState<AttendanceData[]>([]);
   const [attendanceMap, setAttendanceMap] = useState<Record<string, 'P' | 'A'>>( {} );
   const [submitting, setSubmitting] = useState(false);
-  const [attendanceResult, setAttendanceResult] = useState<UploadResult | null>(null);
+  const [dateValidationError, setDateValidationError] = useState<string>("");
+  const [resultDialog, setResultDialog] = useState<ResultDialogState>({
+    open: false,
+    title: '',
+    message: '',
+    type: 'success'
+  });
   const [attendanceDate, setAttendanceDate] = useState<string>("");
   const { token, masterDataClasses } = useAuth();
 
   // Submit attendance
   const handleSubmitAttendance = async () => {
     if (!students.length || !attendanceDate || !selectedGrade || !selectedSection) {
-      setAttendanceResult({ success: false, message: 'Please select grade, section, date, and load students.' });
+      setResultDialog({
+        open: true,
+        title: 'Validation Error',
+        message: 'Please select grade, section, date, and load students.',
+        type: 'error'
+      });
       return;
     }
+    
+    // Validate attendance date
+    const dateValidation = validateAttendanceDate(attendanceDate);
+    if (!dateValidation.isValid) {
+      setDateValidationError(dateValidation.message);
+      setResultDialog({
+        open: true,
+        title: 'Invalid Date',
+        message: dateValidation.message,
+        type: 'error'
+      });
+      return;
+    }
+    
     setSubmitting(true);
-    setAttendanceResult(null);
+    setDateValidationError(""); // Clear validation error on successful validation
     try {
       const payload = students.map(stu => ({
         studentId: stu.eduNestId,
@@ -74,21 +149,24 @@ export default function UploadAttendance() {
         isPresent: (attendanceMap[stu.eduNestId] || 'P') === 'P',
       }));
       const res = await api.post('/api/Attendance/bulk', payload);
-      setAttendanceResult({
-        success: true,
-        message: res.data?.message || `Successfully submitted attendance for ${students.length} students.`
+      setResultDialog({
+        open: true,
+        title: 'Success',
+        message: res.data?.message || `Successfully submitted attendance for ${students.length} students.`,
+        type: 'success'
       });
     } catch (err: any) {
-      setAttendanceResult({
-        success: false,
-        message: err.response?.data?.message || 'Failed to submit attendance. Please try again.'
+      setResultDialog({
+        open: true,
+        title: 'Upload Failed',
+        message: err.response?.data?.message || 'Failed to submit attendance. Please try again.',
+        type: 'error'
       });
     } finally {
       setSubmitting(false);
     }
   };
   const [uploading, setUploading] = useState(false);
-  const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [previewData, setPreviewData] = useState<AttendanceData[]>([]);
   const [showPreview, setShowPreview] = useState(false);
 
@@ -131,8 +209,31 @@ export default function UploadAttendance() {
 
   // Generate Excel template for selected grade/section
   const generateAttendanceTemplate = async () => {
-    if (!selectedGrade || !selectedSection) return;
+    if (!selectedGrade || !selectedSection || !attendanceDate) {
+      setResultDialog({
+        open: true,
+        title: 'Missing Information',
+        message: 'Please select grade, section, and date first.',
+        type: 'error'
+      });
+      return;
+    }
+    
+    // Validate attendance date
+    const dateValidation = validateAttendanceDate(attendanceDate);
+    if (!dateValidation.isValid) {
+      setDateValidationError(dateValidation.message);
+      setResultDialog({
+        open: true,
+        title: 'Invalid Date',
+        message: dateValidation.message,
+        type: 'error'
+      });
+      return;
+    }
+    
     setLoadingTemplate(true);
+    setDateValidationError(""); // Clear validation error on successful validation
     try {
       // Fetch all students for selected grade/section
       const res = await api.get(`/Students?grade=${encodeURIComponent(selectedGrade)}&section=${encodeURIComponent(selectedSection)}`);
@@ -167,7 +268,6 @@ export default function UploadAttendance() {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
       setFile(selectedFile);
-      setUploadResult(null);
       previewFile(selectedFile);
     }
   };
@@ -196,9 +296,11 @@ export default function UploadAttendance() {
         setShowPreview(true);
       } catch (error) {
         console.error('Error reading file:', error);
-        setUploadResult({
-          success: false,
-          message: 'Error reading Excel file. Please check the file format.'
+        setResultDialog({
+          open: true,
+          title: 'File Error',
+          message: 'Error reading Excel file. Please check the file format.',
+          type: 'error'
         });
       }
     };
@@ -207,7 +309,22 @@ export default function UploadAttendance() {
 
   const handleUpload = async () => {
     if (!file || previewData.length === 0) return;
+    
+    // Validate attendance date before uploading
+    const dateValidation = validateAttendanceDate(attendanceDate);
+    if (!dateValidation.isValid) {
+      setDateValidationError(dateValidation.message);
+      setResultDialog({
+        open: true,
+        title: 'Invalid Date',
+        message: dateValidation.message,
+        type: 'error'
+      });
+      return;
+    }
+    
     setUploading(true);
+    setDateValidationError(""); // Clear validation error on successful validation
     try {
       const errors: string[] = [];
       previewData.forEach((attendance, index) => {
@@ -226,10 +343,11 @@ export default function UploadAttendance() {
       });
 
       if (errors.length > 0) {
-        setUploadResult({
-          success: false,
-          message: 'Validation errors found',
-          errors: errors
+        setResultDialog({
+          open: true,
+          title: 'Validation Error',
+          message: `Validation errors found:\n\n${errors.slice(0, 5).join('\n')}${errors.length > 5 ? `\n... and ${errors.length - 5} more errors` : ''}`,
+          type: 'error'
         });
         return;
       }
@@ -247,11 +365,11 @@ export default function UploadAttendance() {
 
       // Call backend
       const response = await api.post('/api/Attendance/bulk', payload);
-      setUploadResult({
-        success: true,
+      setResultDialog({
+        open: true,
+        title: 'Success',
         message: response.data?.message || `Successfully uploaded attendance for ${previewData.length} students`,
-        successCount: previewData.length,
-        errorCount: 0
+        type: 'success'
       });
 
       setFile(null);
@@ -260,10 +378,11 @@ export default function UploadAttendance() {
       const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
       if (fileInput) fileInput.value = '';
     } catch (error: any) {
-      setUploadResult({
-        success: false,
+      setResultDialog({
+        open: true,
+        title: 'Upload Failed',
         message: error.response?.data?.message || 'Upload failed. Please try again.',
-        errors: error.response?.data?.errors || []
+        type: 'error'
       });
     } finally {
       setUploading(false);
@@ -314,6 +433,13 @@ export default function UploadAttendance() {
 
   // Handle submit attendance
 
+  // Handle attendance date change with validation
+  const handleAttendanceDateChange = (date: string) => {
+    setAttendanceDate(date);
+    setDateValidationError(""); // Clear any previous validation errors
+    // Don't show immediate validation errors - only validate when submitting or using the date
+  };
+
   // Helper for attendance stats in preview
   const getAttendanceStats = () => {
     const total = previewData.length;
@@ -342,10 +468,10 @@ export default function UploadAttendance() {
               <CardTitle className="text-indigo-700 dark:text-indigo-200">Take Attendance</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex gap-4 mb-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                 <Select value={selectedGrade} onValueChange={setSelectedGrade}>
-                  <SelectTrigger className="w-32 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                    <SelectValue placeholder="Grade" />
+                  <SelectTrigger className="w-full bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                    <SelectValue placeholder="Select Grade" />
                   </SelectTrigger>
                   <SelectContent>
                     {gradeOptions.map(grade => (
@@ -354,8 +480,8 @@ export default function UploadAttendance() {
                   </SelectContent>
                 </Select>
                 <Select value={selectedSection} onValueChange={setSelectedSection} disabled={!selectedGrade}>
-                  <SelectTrigger className="w-32 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                    <SelectValue placeholder="Section" />
+                  <SelectTrigger className="w-full bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                    <SelectValue placeholder="Select Section" />
                   </SelectTrigger>
                   <SelectContent>
                     {sectionOptions.map(section => (
@@ -363,8 +489,30 @@ export default function UploadAttendance() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Input type="date" value={attendanceDate} onChange={e => setAttendanceDate(e.target.value)} className="w-48 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700" />
-                <Button onClick={handleSearchStudents} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow" disabled={!selectedGrade || !selectedSection}>Search Students</Button>
+                <div className="relative">
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 md:hidden">
+                    Attendance Date
+                  </label>
+                  <Input 
+                    type="date" 
+                    value={attendanceDate} 
+                    onChange={e => handleAttendanceDateChange(e.target.value)} 
+                    max={new Date().toISOString().split('T')[0]} 
+                    className={`w-full h-10 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-sm md:text-base pr-10 ${dateValidationError ? 'border-red-500' : ''}`} 
+                    placeholder="Select Date"
+                    title="Select attendance date"
+                  />
+                  <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none md:top-1/2 md:mt-0 mt-3" />
+                  {!attendanceDate && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none md:hidden">
+                      <span className="text-gray-500 text-sm">Tap to select date</span>
+                    </div>
+                  )}
+                  {dateValidationError && (
+                    <p className="text-red-500 text-xs mt-1">{dateValidationError}</p>
+                  )}
+                </div>
+                <Button onClick={handleSearchStudents} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow w-full" disabled={!selectedGrade || !selectedSection}>Search Students</Button>
               </div>
               <Table className="rounded-lg overflow-hidden border border-gray-100 dark:border-gray-800">
                 <TableHeader className="bg-gray-100 dark:bg-gray-800">
@@ -401,16 +549,6 @@ export default function UploadAttendance() {
               <Button className="mt-4 bg-indigo-600 hover:bg-indigo-700 text-white shadow" onClick={handleSubmitAttendance} disabled={students.length === 0 || submitting}>
                 {submitting ? 'Submitting...' : 'Submit Attendance'}
               </Button>
-              {attendanceResult && (
-                <Alert className={`mt-4 ${attendanceResult.success ? 'border-green-500' : 'border-red-500'}`}> 
-                  {attendanceResult.success ? (
-                    <CheckCircle className="h-5 w-5 text-green-600 inline mr-2" />
-                  ) : (
-                    <AlertCircle className="h-5 w-5 text-red-600 inline mr-2" />
-                  )}
-                  <AlertDescription>{attendanceResult.message}</AlertDescription>
-                </Alert>
-              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -421,10 +559,10 @@ export default function UploadAttendance() {
               <CardTitle className="text-indigo-700 dark:text-indigo-200">Upload via Excel</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex gap-4 mb-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                 <Select value={selectedGrade} onValueChange={setSelectedGrade}>
-                  <SelectTrigger className="w-32 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                    <SelectValue placeholder="Grade" />
+                  <SelectTrigger className="w-full bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                    <SelectValue placeholder="Select Grade" />
                   </SelectTrigger>
                   <SelectContent>
                     {gradeOptions.map(grade => (
@@ -433,8 +571,8 @@ export default function UploadAttendance() {
                   </SelectContent>
                 </Select>
                 <Select value={selectedSection} onValueChange={setSelectedSection} disabled={!selectedGrade}>
-                  <SelectTrigger className="w-32 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                    <SelectValue placeholder="Section" />
+                  <SelectTrigger className="w-full bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                    <SelectValue placeholder="Select Section" />
                   </SelectTrigger>
                   <SelectContent>
                     {sectionOptions.map(section => (
@@ -442,9 +580,31 @@ export default function UploadAttendance() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Input type="date" value={attendanceDate} onChange={e => setAttendanceDate(e.target.value)} className="w-48 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700" />
-                <Button onClick={generateAttendanceTemplate} disabled={!selectedGrade || !selectedSection || !attendanceDate || loadingTemplate} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow">
-                  {loadingTemplate ? "Generating..." : "Generate Attendance Template"}
+                <div className="relative">
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 md:hidden">
+                    Attendance Date
+                  </label>
+                  <Input 
+                    type="date" 
+                    value={attendanceDate} 
+                    onChange={e => handleAttendanceDateChange(e.target.value)} 
+                    max={new Date().toISOString().split('T')[0]} 
+                    className={`w-full h-10 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-sm md:text-base pr-10 ${dateValidationError ? 'border-red-500' : ''}`} 
+                    placeholder="Select Date"
+                    title="Select attendance date"
+                  />
+                  <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none md:top-1/2 md:mt-0 mt-3" />
+                  {!attendanceDate && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none md:hidden">
+                      <span className="text-gray-500 text-sm">Tap to select date</span>
+                    </div>
+                  )}
+                  {dateValidationError && (
+                    <p className="text-red-500 text-xs mt-1">{dateValidationError}</p>
+                  )}
+                </div>
+                <Button onClick={generateAttendanceTemplate} disabled={!selectedGrade || !selectedSection || !attendanceDate || loadingTemplate} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow w-full text-xs md:text-sm">
+                  {loadingTemplate ? "Generating..." : "Generate Template"}
                 </Button>
               </div>
               <Input type="file" accept=".xlsx,.xls" onChange={handleFileChange} className="border-2 border-dashed border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 p-4" />
@@ -509,30 +669,6 @@ export default function UploadAttendance() {
               <Button onClick={handleUpload} disabled={!file || uploading || previewData.length === 0} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white shadow">
                 {uploading ? "Uploading..." : `Upload ${previewData.length} Attendance Records`}
               </Button>
-              {uploadResult && (
-                <Alert className={uploadResult.success ? "border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950" : "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950"}>
-                  <div className="flex items-center gap-2">
-                    {uploadResult.success ? (
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                    ) : (
-                      <AlertCircle className="h-4 w-4 text-red-600" />
-                    )}
-                    <AlertDescription className={uploadResult.success ? "text-green-800 dark:text-green-300" : "text-red-800 dark:text-red-300"}>
-                      {uploadResult.message}
-                      {uploadResult.errors && (
-                        <ul className="mt-2 list-disc list-inside">
-                          {uploadResult.errors.slice(0, 5).map((error, index) => (
-                            <li key={index} className="text-sm">{error}</li>
-                          ))}
-                          {uploadResult.errors.length > 5 && (
-                            <li className="text-sm">... and {uploadResult.errors.length - 5} more errors</li>
-                          )}
-                        </ul>
-                      )}
-                    </AlertDescription>
-                  </div>
-                </Alert>
-              )}
             </CardContent>
           </Card>
           {/* Recent Attendance Uploads (only in Excel tab) */}
@@ -587,6 +723,35 @@ export default function UploadAttendance() {
           </Card>
         </TabsContent>
       </Tabs>
+      
+      {/* Result Dialog */}
+      <Dialog open={resultDialog.open} onOpenChange={(open) => setResultDialog(prev => ({ ...prev, open }))}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className={`flex items-center gap-2 ${
+              resultDialog.type === 'success' ? 'text-green-600' : 'text-red-600'
+            }`}>
+              {resultDialog.type === 'success' ? (
+                <CheckCircle className="h-5 w-5" />
+              ) : (
+                <AlertCircle className="h-5 w-5" />
+              )}
+              {resultDialog.title}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-gray-700 whitespace-pre-line">{resultDialog.message}</p>
+          </div>
+          <div className="flex justify-end">
+            <Button 
+              onClick={() => setResultDialog(prev => ({ ...prev, open: false }))}
+              className="bg-gradient-to-r from-green-500 to-blue-600"
+            >
+              OK
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
