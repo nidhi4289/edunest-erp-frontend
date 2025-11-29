@@ -1,21 +1,18 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# --- Keep Capacitor core ---
+-keep class com.getcapacitor.** { *; }
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Keep plugin annotations and permission callbacks
+-keepclassmembers class * {
+    @com.getcapacitor.annotation.CapacitorPlugin *;
+    @com.getcapacitor.annotation.PermissionCallback *;
+}
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# --- Keep official plugins you use ---
+-keep class com.capacitorjs.plugins.pushnotifications.** { *; }
+-keep class com.capacitorjs.plugins.localnotifications.** { *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# --- Keep your custom plugin ---
+-keep class com.edunest.erp.NotificationBridge { *; }
+
+# (Optionally) keep your FCM service
+-keep class com.edunest.erp.EdunestFirebaseMessagingService { *; }

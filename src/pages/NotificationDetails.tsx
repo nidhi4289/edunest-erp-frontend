@@ -14,7 +14,7 @@ interface StoredNotification extends PushNotificationSchema {
 
 export default function NotificationDetails() {
   const navigate = useNavigate();
-  const { notifications, unreadCount, markAsRead, clearAll } = useNotifications();
+  const { notifications, unreadCount, markAsRead, clearAll, deleteNotification } = useNotifications();
 
   const getNotificationIcon = (notification: any) => {
     const title = notification.title?.toLowerCase() || '';
@@ -81,6 +81,8 @@ export default function NotificationDetails() {
     markAsRead(notification.id);
   };
 
+  // Debug Native Fetch handler removed
+
   return (
     <div className="p-6 space-y-6">
       <PageHeader
@@ -108,6 +110,7 @@ export default function NotificationDetails() {
               <ArrowLeft className="h-4 w-4" />
               Back
             </Button>
+            {/* Debug Native Fetch button removed */}
           </div>
         }
       />
@@ -196,7 +199,7 @@ export default function NotificationDetails() {
                     variant="ghost"
                     onClick={(e) => {
                       e.stopPropagation();
-                      markAsRead(notification.id);
+                      deleteNotification(notification);
                     }}
                     className="text-gray-500 hover:text-gray-700"
                   >

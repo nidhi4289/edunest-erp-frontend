@@ -1,36 +1,26 @@
 {
   "project_info": {
-    "project_number": "1234567890",
-    "project_id": "your-project-id",
-    "storage_bucket": "your-project-id.appspot.com"
+    "project_number": "213756465768",
+    "project_id": "edunesterpnotificationservice",
+    "storage_bucket": "edunesterpnotificationservice.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:1234567890:android:abcd1234",
+        "mobilesdk_app_id": "1:213756465768:android:0fd404f3e0db43677b61dd",
         "android_client_info": {
           "package_name": "com.edunest.erp"
         }
       },
-      "oauth_client": [
-        {
-          "client_id": "1234567890-abcd1234.apps.googleusercontent.com",
-          "client_type": 3
-        }
-      ],
+      "oauth_client": [],
       "api_key": [
         {
-          "current_key": "your-api-key"
+          "current_key": "AIzaSyAUhmXgZRnT9wSQL_gYhdOCAEImVuLyssc"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": [
-            {
-              "client_id": "1234567890-abcd1234.apps.googleusercontent.com",
-              "client_type": 3
-            }
-          ]
+          "other_platform_oauth_client": []
         }
       }
     }

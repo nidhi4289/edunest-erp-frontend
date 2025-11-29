@@ -1,5 +1,6 @@
 import { PushNotifications, Token, PushNotificationSchema, ActionPerformed } from '@capacitor/push-notifications';
 import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
 
 // Global callback for notifications (will be set by NotificationContext)
 let notificationCallback: ((notification: PushNotificationSchema) => void) | null = null;
@@ -26,21 +27,19 @@ export class PushNotificationService {
   }
   
   static async initialize(): Promise<void> {
+    console.log('🔔 Initializing PushNotificationService...');
     if (!Capacitor.isNativePlatform()) {
+      console.log('⚠️ Not a native platform, skipping push setup');
       return;
     }
-
     // Request permission for push notifications
     const permStatus = await PushNotifications.requestPermissions();
     console.log('🔐 Permission status:', permStatus);
-    
     if (permStatus.receive === 'granted') {
       console.log('✅ Push notification permission granted');
-      
       // Register with Apple / Google to receive push via APNS/FCM
       console.log('📋 Registering for push notifications...');
       await PushNotifications.register();
-      
       // Set up listeners
       this.setupListeners();
     } else {
@@ -50,49 +49,32 @@ export class PushNotificationService {
 
   static setupListeners(): void {
     console.log('🔔 Setting up push notification listeners...');
-    
-    // Remove existing listeners first to avoid duplicates
     PushNotifications.removeAllListeners();
-    
     // On registration
     PushNotifications.addListener('registration', (token: Token) => {
       console.log('✅ Push notification token received:', token.value);
-      
-      // Store the token for backend communication
       localStorage.setItem('pushNotificationToken', token.value);
-      
-      // Send token to your backend
       this.sendTokenToBackend(token.value);
     });
-
     // On registration error
     PushNotifications.addListener('registrationError', (error: any) => {
-      console.error('❌ Push notification registration error:', error);
+      console.error('❌ Push notification registration error:', error, error?.message, error?.code, JSON.stringify(error));
     });
-
     // On push notification received (app in foreground)
     PushNotifications.addListener('pushNotificationReceived', (notification: PushNotificationSchema) => {
-      console.log('📱 Push notification received in FOREGROUND:', notification);
-      
-      // Ensure unique ID for foreground notifications
+      console.log('📱 [FOREGROUND] pushNotificationReceived:', JSON.stringify(notification));
       const foregroundNotification = {
         ...notification,
         id: notification.id || `fg-${notification.title || 'notification'}-${Date.now()}`,
         data: { ...notification.data, fromForeground: true }
       };
-      
-      // Handle foreground notification
       this.handleForegroundNotification(foregroundNotification);
     });
-
     // On push notification tapped (app opened from notification)
     PushNotifications.addListener('pushNotificationActionPerformed', (notification: ActionPerformed) => {
-      console.log('👆 Push notification action performed (tapped):', notification);
-      
-      // Handle notification tap (navigate to specific page, etc.)
+      console.log('👆 [ACTION PERFORMED] pushNotificationActionPerformed:', JSON.stringify(notification));
       this.handleNotificationTap(notification);
     });
-    
     console.log('✅ Push notification listeners setup complete');
   }
 
@@ -159,7 +141,24 @@ export class PushNotificationService {
 
   static handleForegroundNotification(notification: PushNotificationSchema): void {
     console.log('🔔 Handling foreground notification:', notification.title);
-    
+    // Show a local notification for foreground messages (popup)
+    LocalNotifications.schedule({
+      notifications: [
+        {
+          title: notification.title || 'Notification',
+          body: notification.body || '',
+          id: Date.now(),
+          schedule: { at: new Date(Date.now() + 100) },
+          sound: 'default',
+          actionTypeId: '',
+          extra: notification.data || {}
+        }
+      ]
+    });
+    // Show alert dialog as well (optional)
+    // if (notification.title && notification.body) {
+    //   alert(`📱 ${notification.title}\n${notification.body}`);
+    // }
     // Use the callback to update the notification context
     if (notificationCallback) {
       try {
@@ -170,10 +169,6 @@ export class PushNotificationService {
       }
     } else {
       console.log('❌ No notification callback registered');
-      // Fallback: show alert if no callback is registered
-      if (notification.title && notification.body) {
-        alert(`📱 ${notification.title}\n${notification.body}`);
-      }
     }
   }
 

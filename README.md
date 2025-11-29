@@ -1,3 +1,12 @@
+
+# Release Notes
+
+## 1.0.5 (2025-11-28)
+- Improved notification deletion logic (native and JS)
+- Fixed unread count sync issues
+- Ensured background notifications are not blocked by title/body
+- Updated app bundle version for Play Store release
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.

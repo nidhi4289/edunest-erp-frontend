@@ -42,18 +42,7 @@ export function NotificationBadge({ onClick, className = "" }: NotificationBadge
         )}
       </Button>
       
-      {/* Clear All Button (appears when there are notifications) */}
-      {unreadCount > 0 && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleClearAll}
-          className="absolute -top-2 -right-2 p-1 h-6 w-6 bg-gray-600 hover:bg-gray-700 rounded-full"
-          title="Clear all notifications"
-        >
-          <X className="h-3 w-3 text-white" />
-        </Button>
-      )}
+      {/* Removed Clear All Button. Users should clear notifications from the notifications page. */}
     </div>
   );
 }

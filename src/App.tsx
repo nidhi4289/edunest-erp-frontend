@@ -232,6 +232,14 @@ function AppWithNavigation() {
         </Routes>
   );
 }
+function PushInit() {
+  useEffect(() => {
+    console.log("🚀 Initializing Push Notification Service AFTER NotificationProvider is ready");
+    PushNotificationService.initialize();
+  }, []);
+
+  return null;
+}
 
 export default function App() {
   return (
@@ -239,6 +247,7 @@ export default function App() {
       <NotificationProvider>
         <BrowserRouter>
           <AppWithNavigation />
+          <PushInit />   {/* 🔥 ADD THIS */}
         </BrowserRouter>
       </NotificationProvider>
     </AuthProvider>
