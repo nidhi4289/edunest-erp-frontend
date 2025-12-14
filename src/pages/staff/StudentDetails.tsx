@@ -450,33 +450,37 @@ export default function StudentDetails() {
       
       // Handle PDF download/sharing based on platform
       if (Capacitor.isNativePlatform()) {
-        // Mobile platform - save to filesystem and share
+        // Mobile platform - save to Documents directory (more accessible than Cache)
         const pdfBase64 = pdf.output('datauristring').split(',')[1];
         
         try {
+          // Save to Documents directory so user can find it in file manager
           const result = await Filesystem.writeFile({
             path: fileName,
             data: pdfBase64,
-            directory: Directory.Cache,
-            encoding: Encoding.UTF8
+            directory: Directory.Documents,
+            recursive: true
           });
           
-          // Share the PDF file
-          await Share.share({
-            title: 'Report Card',
-            text: `Report Card for ${selectedStudent.firstName} ${selectedStudent.lastName}`,
-            url: result.uri,
-            dialogTitle: 'Share Report Card'
-          });
+          console.log('PDF saved to:', result.uri);
           
-          alert('Report card generated and ready to share!');
-        } catch (shareError) {
-          console.error('Error sharing PDF:', shareError);
-          // Fallback: try to open in browser
-          const pdfBlob = pdf.output('blob');
-          const pdfUrl = URL.createObjectURL(pdfBlob);
-          window.open(pdfUrl, '_blank');
-          alert('Report card generated! Check your downloads or browser.');
+          // Try to share the PDF file
+          try {
+            await Share.share({
+              title: 'Report Card',
+              text: `Report Card for ${selectedStudent.firstName} ${selectedStudent.lastName}`,
+              url: result.uri,
+              dialogTitle: 'Share or Save Report Card'
+            });
+            alert(`Report card saved to Documents folder as:\n${fileName}\n\nYou can also find it in your device's file manager.`);
+          } catch (shareError) {
+            // Share cancelled or failed, but file is still saved
+            console.log('Share cancelled or failed, but file saved:', shareError);
+            alert(`Report card saved successfully!\n\nLocation: Documents/${fileName}\n\nYou can find it in your device's file manager or downloads folder.`);
+          }
+        } catch (fileError) {
+          console.error('Error saving PDF:', fileError);
+          alert(`Failed to save PDF: ${fileError instanceof Error ? fileError.message : 'Unknown error'}. Please try again.`);
         }
       } else {
         // Web platform - display PDF in new tab with print/save options

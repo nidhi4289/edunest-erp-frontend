@@ -88,7 +88,7 @@ export default function AssignHomework() {
         createdAt: now,
         updatedAt: now
       };
-  const res = await fetch(`${import.meta.env.VITE_API_URL}/api/Homework`, {
+  const res = await fetch(`${import.meta.env.VITE_ORCHESTRATOR_URL}/api/Homework`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -240,7 +240,7 @@ export default function AssignHomework() {
                                   details: editDetails,
                                   dueDate: new Date(editDueDate).toISOString()
                                 };
-                                const res = await fetch(`${import.meta.env.VITE_API_URL}/api/Homework/${hw.id}`, {
+                                const res = await fetch(`${import.meta.env.VITE_ORCHESTRATOR_URL}/api/Homework/${hw.id}`, {
                                   method: "PUT",
                                   headers: {
                                     "Content-Type": "application/json",
